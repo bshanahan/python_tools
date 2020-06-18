@@ -5,8 +5,8 @@ import boututils.calculus as calc
 import matplotlib.pyplot as plt
 import random
 
-def rotating_ellipse(nx=132,ny=16,nz=128,xcentre=3,I_coil=0.005,curvilinear=True,rectangular=False, fname='rotating-ellipse.fci.nc', a=0.5, curvilinear_inner_aligned=True, curvilinear_outer_aligned=True, npoints=100, Btor=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False):
-    yperiod = 2*np.pi
+def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True,rectangular=False, fname='rotating-ellipse.fci.nc', a=0.4, curvilinear_inner_aligned=True, curvilinear_outer_aligned=True, npoints=421, Btor=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False):
+    yperiod = 2*np.pi/5.
     field = zb.field.RotatingEllipse(xcentre = xcentre, I_coil=I_coil, radius = 2*a, yperiod = yperiod)
     # Define the y locations
     ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
@@ -15,20 +15,21 @@ def rotating_ellipse(nx=132,ny=16,nz=128,xcentre=3,I_coil=0.005,curvilinear=True
     R2 = np.ones((ny))
     iteration = 0
     if rectangular:
-        print "Making rectangular poloidal grid"
+        print ("Making rectangular poloidal grid")
         poloidal_grid = zb.poloidal_grid.RectangularPoloidalGrid(nx, nz, 1.0, 1.0, Rcentre=xcentre)
     elif curvilinear:
-        print "Making curvilinear poloidal grid"
+        print ("Making curvilinear poloidal grid")
         inner = zb.rzline.shaped_line(R0=xcentre, a=a/2., elong=0, triang=0.0, indent=0, n=npoints)
         outer = zb.rzline.shaped_line(R0=xcentre, a=a, elong=0, triang=0.0, indent=0, n=npoints)
 
         if curvilinear_inner_aligned:
-            print "Aligning to inner flux surface..."
+            print ("Aligning to inner flux surface...")
             inner_lines = get_lines(field, start_r, start_z, ycoords, yperiod=yperiod, npoints=npoints)
         if curvilinear_outer_aligned:
-            print "Aligning to outer flux surface..."
+            print ("Aligning to outer flux surface...")
             outer_lines = get_lines(field, start_r+a, start_z, ycoords, yperiod=yperiod, npoints=npoints)
-        print "creating_grid..."
+            
+        print ("creating grid...")
         if curvilinear_inner_aligned:
             if curvilinear_outer_aligned:
                 poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz, show=show_maps) for inner, outer in zip(inner_lines, outer_lines) ]
@@ -44,10 +45,11 @@ def rotating_ellipse(nx=132,ny=16,nz=128,xcentre=3,I_coil=0.005,curvilinear=True
     zb.write_maps(grid,field,maps,str(fname),metric2d=False)
 
     if (curvilinear and calc_curvature):
+        print("calculating curvature...")
         calc_curvilinear_curvature(fname, field, grid)
 
     if (calc_curvature and smooth_curvature):
-        smooth_field(fname, write_to_file=True, return_values=False)
+        smooth_field(fname, write_to_file=True, return_values=False, smooth_metric=True)
         
 def get_lines(field, start_r, start_z, yslices, yperiod=2*np.pi, npoints=150, smoothing=False):
     rzcoord, ycoords = zb.fieldtracer.trace_poincare(field, start_r, start_z, yperiod, y_slices=yslices, revs=npoints)
@@ -86,36 +88,71 @@ def calc_curvilinear_curvature(fname, field, grid):
             for z in np.arange(0,B.shape[-1]):
                 dBzdx[:,y,z] = calc.deriv(field.Bzfunc(R[:,z],y,Z[:,z]))/dx[:,y,z]
                 dBydx[:,y,z] = calc.deriv(field.Byfunc(R[:,z],y,Z[:,z]))/dx[:,y,z]
-        bxcvx = dBydz
-        bxcvy = dBxdz - dBzdx
-        bxcvz = dBydx
+        bxcvx = dBydz / B**2.
+        bxcvy = dBxdz - dBzdx / B**2.
+        bxcvz = dBydx / B**2.
 
         f.write('bxcvz', bxcvz)
         f.write('bxcvx', bxcvx)
         f.write('bxcvy', bxcvy)
         f.close()
 
-def smooth_field(fname, write_to_file=False, return_values=False, order=7):
+def smooth_field(fname, write_to_file=False, return_values=False, smooth_metric=True, order=7):
     from scipy.signal import savgol_filter
     f = DataFile(str(fname),write=True)
     B = f.read('B')
     bxcvx = f.read('bxcvx')
     bxcvz = f.read('bxcvz')
     bxcvy = f.read('bxcvy')
+
     bxcvx_smooth = np.zeros(bxcvx.shape)
     bxcvy_smooth = np.zeros(bxcvy.shape)
     bxcvz_smooth = np.zeros(bxcvz.shape)
+
+    if smooth_metric:
+        g13 = f.read('g13')
+        g_13 = f.read('g_13')
+        g11 = f.read('g11')
+        g_11 = f.read('g_11')
+        g33 = f.read('g33')
+        g_33 = f.read('g_33')
+
+        g13_smooth = np.zeros(g13.shape)
+        g_13_smooth = np.zeros(g_13.shape)
+        g11_smooth = np.zeros(g11.shape)
+        g_11_smooth = np.zeros(g_11.shape)
+        g33_smooth = np.zeros(g33.shape)
+        g_33_smooth = np.zeros(g_33.shape)
+
+    
     
     for y in np.arange(0,bxcvx.shape[1]):
         for x in np.arange(0,bxcvx.shape[0]):
             bxcvx_smooth[x,y,:] = savgol_filter(bxcvx[x,y,:],np.int(np.ceil(bxcvx.shape[-1]/2)//2*2+1),order)
             bxcvz_smooth[x,y,:] = savgol_filter(bxcvz[x,y,:],np.int(np.ceil(bxcvz.shape[-1]/2)//2*2+1),order)
             bxcvy_smooth[x,y,:] = savgol_filter(bxcvy[x,y,:],np.int(np.ceil(bxcvy.shape[-1]/2)//2*2+1),order)
+            if smooth_metric:
+                g11_smooth[x,y,:] = savgol_filter(g11[x,y,:],np.int(np.ceil(g11.shape[-1]/21.)//2*2+1),5)
+                g_11_smooth[x,y,:] = savgol_filter(g_11[x,y,:],np.int(np.ceil(g_11.shape[-1]/21.)//2*2+1),5)
+                g13_smooth[x,y,:] = savgol_filter(g13[x,y,:],np.int(np.ceil(g13.shape[-1]/21.)//2*2+1),5)
+                g_13_smooth[x,y,:] = savgol_filter(g_13[x,y,:],np.int(np.ceil(g_13.shape[-1]/21.)//2*2+1),5)
+                g33_smooth[x,y,:] = savgol_filter(g33[x,y,:],np.int(np.ceil(g33.shape[-1]/21.)//2*2+1),5)
+                g_33_smooth[x,y,:] = savgol_filter(g_33[x,y,:],np.int(np.ceil(g_33.shape[-1]/21.)//2*2+1),5)
+                
 
     if(write_to_file):
         f.write('bxcvx',bxcvx_smooth)
         f.write('bxcvy',bxcvy_smooth)
         f.write('bxcvz',bxcvz_smooth)
+
+        if smooth_metric:
+            f.write('g11',g11_smooth)
+            f.write('g_11',g_11_smooth)
+            f.write('g13',g13_smooth)
+            f.write('g_13',g_13_smooth)
+            f.write('g33',g33_smooth)
+            f.write('g_33',g_33_smooth)
+            
     f.close()
     if(return_values):
         return bxcvx_smooth, bxcvy_smooth, bxcvz_smooth, bxcvx, bxcvy, bxcvz
