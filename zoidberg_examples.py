@@ -89,7 +89,7 @@ def calc_curvilinear_curvature(fname, field, grid):
                 dBzdx[:,y,z] = calc.deriv(field.Bzfunc(R[:,z],y,Z[:,z]))/dx[:,y,z]
                 dBydx[:,y,z] = calc.deriv(field.Byfunc(R[:,z],y,Z[:,z]))/dx[:,y,z]
         bxcvx = dBydz / B**2.
-        bxcvy = dBxdz - dBzdx / B**2.
+        bxcvy = (dBxdz - dBzdx) / B**2.
         bxcvz = dBydx / B**2.
 
         f.write('bxcvz', bxcvz)
