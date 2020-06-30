@@ -28,17 +28,19 @@ def close_poloidal_loop(var, fname):
 
 
 def contourf_poloidal_plane(var,fname,var_contour=None,t=-1,y=0,cbar=False,save=False,save_fname="poloidal_cross_section.png"):
+    plt.rc('font', family='Serif')
+    # plt.grid(alpha=0.5)
     if var_contour is not None:
         r_new, z_new, var_new  = close_poloidal_loop(var,fname)
         r_new, z_new, var_contour_new  = close_poloidal_loop(var_contour,fname)
 
         plt.contourf(r_new[:,y,:], z_new[:,y,:], var_new[t,:,y,:],100)
         if cbar:
-            plt.colorbar(str(var), fontsize=20)
+            plt.colorbar()
         plt.contour(r_new[:,y,:], z_new[:,y,:], var_contour_new[t,:,y,:],10)
-        plt.xlabel("R (m)", fontsize=20)
-        plt.ylabel("Z (m)", fontsize=20)
-        plt.tick_params('both',labelsize=18)
+        plt.xlabel("R (m)", fontsize=14)
+        plt.ylabel("Z (m)", fontsize=14)
+        plt.tick_params('both',labelsize=14)
         plt.axis("equal")
         plt.tight_layout()
         plt.show()
@@ -47,20 +49,22 @@ def contourf_poloidal_plane(var,fname,var_contour=None,t=-1,y=0,cbar=False,save=
         
         r_new, z_new, var_new  = close_poloidal_loop(var,fname)
 
-        for i in [0,8,16,24,-1]:
-            print i
-            plt.contourf(r_new[:,i,:], z_new[:,i,:], var_new[t,:,i,:],100)
-            if cbar:
-                plt.colorbar(str(var), fontsize=20)
-            plt.xlabel("R (m)", fontsize=20)
-            plt.ylabel("Z (m)", fontsize=20)
-            plt.tick_params('both',labelsize=18)
-            # plt.gca().axis("equal")
-            
-            ax = plt.axes()
-            ax.set_ylim((np.min(z_new),np.max(z_new)))
-            ax.set_xlim((np.min(r_new),np.max(r_new)))
-            ax.set_aspect('equal')
-            # plt.tight_layout()
-            plt.savefig('w7x-vacuum-y'+str(i)+'.png',dpi=500)
-            plt.clf()
+        # for i in [0,8,16,24,-1]:
+            # print i
+        plt.contourf(r_new[:,y,:], z_new[:,y,:], var_new[t,:,y,:],100)
+        if cbar:
+            plt.colorbar()
+        plt.xlabel("R (m)", fontsize=14)
+        plt.ylabel("Z (m)", fontsize=14)
+        plt.tick_params('both',labelsize=14)
+        plt.gca().axis("equal")
+        
+        # ax = plt.axes()
+        # ax.set_ylim((np.min(z_new),np.max(z_new)))
+        # ax.set_xlim((np.min(r_new),np.max(r_new)))
+        # ax.set_aspect('equal')
+        plt.tight_layout()
+        plt.show()
+        
+        # plt.savefig('w7x-vacuum-y'+str(i)+'.png',dpi=500)
+        plt.clf()
