@@ -48,10 +48,10 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
         calc_curvilinear_curvature(fname, field, grid)
 
     if (calc_curvature and smooth_curvature):
-        smooth_field(fname, write_to_file=True, return_values=False, smooth_metric=True)
+        smooth_metric(fname, write_to_file=True, return_values=False, smooth_metric=True)
 
-def W7X(nx=68,ny=16,nz=256,fname='W7-X.fci.nc', VMEC=True, vmec_file='w7-x.wout.nc', inner_VMEC=True, inner_vacuum=False, outer_VMEC=True, outer_vacuum=False, npoints=100, a=0.5, show_maps=False, calc_curvature=True, smooth_curvature=False, configuration=0):
-    field = zb.field.W7X()
+def W7X(nx=68,ny=16,nz=256,fname='W7-X.fci.nc', VMEC=True, vmec_file='w7-x.wout.nc', inner_VMEC=True, inner_vacuum=False, outer_VMEC=True, outer_vacuum=False, outer_vessel=False, npoints=100, a=0.5, show_maps=False, calc_curvature=True, smooth_curvature=False, configuration=0):
+    field = zb.field.W7X(phimax=2*np.pi/5.)
     yperiod = 2*np.pi/5.
     ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
     xcentre, zcentre = field.magnetic_axis(phi_axis=ycoords[0],configuration=configuration)
@@ -74,6 +74,9 @@ def W7X(nx=68,ny=16,nz=256,fname='W7-X.fci.nc', VMEC=True, vmec_file='w7-x.wout.
     elif outer_VMEC:
         print ("Aligning to outer VMEC flux surface...")
         outer_lines = get_VMEC_surfaces(phi=ycoords,s=1,npoints=nz)
+    elif outer_vessel:
+        print ("Aligning to plasma vessel (EXPERIMENTAL) ...")
+        outer_lines = get_W7X_vessel(phi=ycoords, nz=nz)
         
     print ("creating grid...")
     poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz, show=show_maps) for inner, outer in zip(inner_lines, outer_lines) ]
@@ -88,7 +91,7 @@ def W7X(nx=68,ny=16,nz=256,fname='W7-X.fci.nc', VMEC=True, vmec_file='w7-x.wout.
         calc_curvilinear_curvature(fname, field, grid)
 
     if (calc_curvature and smooth_curvature):
-        smooth_field(fname, write_to_file=True, return_values=False, smooth_metric=True)
+        smooth_metric(fname, write_to_file=True, return_values=False, smooth_metric=True)
 
 def get_lines(field, start_r, start_z, yslices, yperiod=2*np.pi, npoints=150, smoothing=False):
     rzcoord, ycoords = zb.fieldtracer.trace_poincare(field, start_r, start_z, yperiod, y_slices=yslices, revs=npoints)
@@ -108,6 +111,8 @@ def get_lines(field, start_r, start_z, yslices, yperiod=2*np.pi, npoints=150, sm
             
     return lines
 
+
+### return a VMEC flux surface as a RZline object
 def get_VMEC_surfaces(phi=[0],s=0.75,w7x_run='w7x_ref_1',npoints=100):
     from osa import Client
     client =  Client("http://esb.ipp-hgw.mpg.de:8280/services/vmec_v5?wsdl")
@@ -122,6 +127,7 @@ def get_VMEC_surfaces(phi=[0],s=0.75,w7x_run='w7x_ref_1',npoints=100):
 
     return lines
 
+### Return the W7X PFC as a RZline object
 def get_W7X_vessel(phi=[0],nz=256):
     from osa import Client
     import matplotlib.path as path
@@ -157,29 +163,30 @@ def get_W7X_vessel(phi=[0],nz=256):
             z[i] = xyz[:,2][0]
             all_vertices[i,:]= ((R[i], z[i]))
 
-        # Path = path.Path(all_vertices, closed=True)
+
         # now have all vertices of vessel, but need to put them in sensible order...
+
         # find magnetic axis
+        # axis_line = get_VMEC_surfaces(phi=[phi[y]],s=0,npoints=20)
+        # axis = [axis_line[0].R[0], axis_line[0].Z[0]]
 
-        axis_line = get_VMEC_surfaces(phi=[phi[y]],s=0,npoints=20)
-        axis = [axis_line[0].R[0], axis_line[0].Z[0]]
-
-        loc = np.asarray([all_vertices[:,0] - axis[0], all_vertices[:,1] - axis[1]])
+        # loc = np.asarray([all_vertices[:,0] - axis[0], all_vertices[:,1] - axis[1]])
     
-        theta = np.arctan2(loc[1,:],loc[0,:])
+        # theta = np.arctan2(loc[1,:],loc[0,:])
 
-        sorted_indices = sorted(range(len(theta)), key=lambda k: theta[k])
+        # sorted_indices = sorted(range(len(theta)), key=lambda k: theta[k])
 
-        # return all_vertices[sorted_indices]
-        # import pdb; pdb.set_trace()
-        r, z = [all_vertices[sorted_indices][::2,0], all_vertices[sorted_indices][::2,1]]
-        # r, z = [all_vertices[:,0], all_vertices[:,1]]
+        # r, z = [all_vertices[sorted_indices][::4,0], all_vertices[sorted_indices][::4,1]]
+
+        Path = path.Path(all_vertices, closed=True)
+        r, z = [all_vertices[::3,0], all_vertices[::3,1]]
         line = zb.rzline.line_from_points(r,z)
         line = line.equallySpaced(n=nz)
         lines.append(line)
     
     return lines
-            
+
+## calculate curvature for curvilinear grids
 def calc_curvilinear_curvature(fname, field, grid):
         from scipy.signal import savgol_filter
 
@@ -226,7 +233,8 @@ def calc_curvilinear_curvature(fname, field, grid):
         f.write('bxcvy', bxcvy)
         f.close()
 
-def smooth_field(fname, write_to_file=False, return_values=False, smooth_metric=True, order=7):
+## smooth the metric tensor components
+def smooth_metric(fname, write_to_file=False, return_values=False, smooth_metric=True, order=7):
     from scipy.signal import savgol_filter
     f = DataFile(str(fname),write=True)
     B = f.read('B')
