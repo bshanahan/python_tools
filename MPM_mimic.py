@@ -157,13 +157,14 @@ def calc_com_velocity(path = "." ,fname="rot_ell.curv.68.16.128.Ic_02.nc", tmax=
         for t in np.arange(0,nt):
             # max_ind[t,y] = np.where(n[t,:,y,:] == np.max(n[t,:,y,:]))
             # R_max = 
-            data = n[t,:,y,:]
+            data = np.asarray(n[t,:,y,:])
             nmax,nmin = np.amax((data[:,:])),np.amin((data[:,:]))
-            data[data < (nmin+0.385*(nmax-nmin))] = 0
+            data[data < (nmin+0.386*(nmax-nmin))] = 0
             fwhd[t,:,y,:]=data
             ntot = np.sum(data[:,:])
             zval_float = np.sum(np.sum(data[:,:],axis=0)*(np.arange(nz)))/ntot
             xval_float = np.sum(np.sum(data[:,:],axis=1)*(np.arange(nx)))/ntot
+
             xval[t,y] = int(round(xval_float))
             zval[t,y] = int(round(zval_float))
 
