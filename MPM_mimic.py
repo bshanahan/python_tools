@@ -5,7 +5,26 @@ from boututils import calculus as calc
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
-def synthetic_probe(path='.',t_range=[100,150]):
+def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50):
+    """ Synthetic MPM probe for 2D blob simulations
+    Follows same conventions as Killer, Shanahan et al., PPCF 2020.
+
+    input: 
+    path to BOUT++ dmp files 
+    time range for measurements (index)
+    detailed_return (bool) -- whether or not extra information is returned.
+
+    returns: 
+    delta_measured -- measured blob size
+    delta_real_mean -- real blob size
+    vr_CA -- radial velocity (conditionally averaged)
+    v -- COM velocity
+    optionally returns: 
+    n_CA*n0 -- conditionally-averaged density
+    len(event_indices) -- number of events measured
+    t_e -- time-width of I_sat peak
+    events -- locations of measurements
+    """
     n  = collect("Ne", path=path, info=False)
     n0 = collect("Nnorm", path=path, info=False)
     T0 = collect("Tnorm", path=path, info=False)
@@ -43,9 +62,8 @@ def synthetic_probe(path='.',t_range=[100,150]):
 
     for k in np.arange(0,nz):
         for i in np.arange(0,nx):
-            if(np.any(n[50:,i,k] >  nmin+0.368*(nmax-nmin))):
-                ### find trise
-                trise[i,k] = int(np.argmax(n[50:,i,k] > nmin+0.368*(nmax-nmin))+50)
+            if(np.any(n[t_min:,i,k] >  nmin+0.368*(nmax-nmin))):
+                trise[i,k] = int(np.argmax(n[t_min:,i,k] > nmin+0.368*(nmax-nmin))+t_min)
                 events[i,k] = 1
                 Epol[:,i,k] = (phi[:,i,0, (k+probe_offset)%(nz-1)] -  phi[:,i,0, (k-probe_offset)%(nz-1)])/0.01
                 vr[:,i,k] = Epol[:,i,k] / B0
@@ -100,8 +118,11 @@ def synthetic_probe(path='.',t_range=[100,150]):
     print ("Number of events: {} ".format(np.around(len(event_indices),decimals=2)))
     print ("Size measurement error: {}% ".format(np.around(100*delta_measured/delta_real_mean,decimals=2)))
     print ("Velocity measurement error: {}% ".format(np.around(100*np.max(vr_CA)/np.max(v[trange]),decimals=2)))
-    
-    return  delta_measured, delta_real_mean, vr_CA, v, n_CA*n0, len(event_indices), t_e 
+
+    if not detailed_return:
+        return  delta_measured, delta_real_mean, vr_CA, v
+    else:
+        return  delta_measured, delta_real_mean, vr_CA, v, n_CA*n0, len(event_indices), t_e, events
 
 
 def calc_com_velocity(path = "." ,fname="rot_ell.curv.68.16.128.Ic_02.nc", tmax=-1, track_peak=False):
@@ -157,16 +178,16 @@ def calc_com_velocity(path = "." ,fname="rot_ell.curv.68.16.128.Ic_02.nc", tmax=
         for t in np.arange(0,nt):
             # max_ind[t,y] = np.where(n[t,:,y,:] == np.max(n[t,:,y,:]))
             # R_max = 
-            data = np.asarray(n[t,:,y,:])
+            data = n[t,:,y,:]
             nmax,nmin = np.amax((data[:,:])),np.amin((data[:,:]))
-            data[data < (nmin+0.386*(nmax-nmin))] = 0
+            data[data < (nmin+0.368*(nmax-nmin))] = 0
             fwhd[t,:,y,:]=data
             ntot = np.sum(data[:,:])
             zval_float = np.sum(np.sum(data[:,:],axis=0)*(np.arange(nz)))/ntot
             xval_float = np.sum(np.sum(data[:,:],axis=1)*(np.arange(nx)))/ntot
 
-            xval[t,y] = int(round(xval_float))
-            zval[t,y] = int(round(zval_float))
+            xval[t,y] = int(np.round(xval_float))
+            zval[t,y] = int(np.round(zval_float))
 
             xpos,zpos = np.where(data[:,:]==nmax)		
             xpeakval[t,y] = xpos[0]
