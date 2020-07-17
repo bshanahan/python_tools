@@ -55,13 +55,14 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     vr = np.zeros((nt,nx,nz))
     events = np.zeros((nx,nz))
     trise = np.zeros((nx,nz))
-    I=np.zeros((nt,nx,nz))
+    #I=np.zeros((nt,nx,nz))
 
     n = n[:,:,0,:]
 
     a=1
     #for tt in np.arange(0,nt):
     I=n
+    I*=a
 
     Imax,Imin = np.amax((I[0,:,:])),np.amin((I[0,:,:]))
 
