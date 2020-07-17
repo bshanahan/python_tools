@@ -59,7 +59,10 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
 
     n = n[:,:,0,:]
 
-    a=1
+    el=1.602e-19
+    m_i= 1.672e-27
+    kb= 1.381e-23
+    a=0.49*el*np.sqrt((2*kb*T0)/m_i)
     #for tt in np.arange(0,nt):
     I=n
     I*=a
