@@ -26,6 +26,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     events -- locations of measurements
     """
     n  = collect("Ne", path=path, info=False)
+    Pe  = collect("Pe", path=path, info=False)
     n0 = collect("Nnorm", path=path, info=False)
     T0 = collect("Tnorm", path=path, info=False)
     phi = collect("phi",path=path, info=False)*T0
@@ -58,11 +59,15 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     #I=np.zeros((nt,nx,nz))
 
     n = n[:,:,0,:]
+    Pe=Pe[:,:,0,:]
 
     el=1.602e-19
     m_i= 1.672e-27
     kb= 1.381e-23
-    a=0.49*el*np.sqrt((2*kb*T0)/m_i)
+
+    Te=np.divide(Pe,n)
+    Pe=0
+    a=0.49*el*np.sqrt((2*kb*Te)/m_i)
     #for tt in np.arange(0,nt):
     I=n
     I*=a
