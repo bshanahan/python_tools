@@ -13,6 +13,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     path to BOUT++ dmp files 
     time range for measurements (index)
     detailed_return (bool) -- whether or not extra information is returned.
+    t_min = minimum time index for valid measurement
 
     returns: 
     delta_measured -- measured blob size

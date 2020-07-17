@@ -224,9 +224,9 @@ def calc_curvilinear_curvature(fname, field, grid):
                 dBzdx[:,y,z] = calc.deriv(Bz_smooth[:,y,z])/dx[:,y,z]
                 dBydx[:,y,z] = calc.deriv(By_smooth[:,y,z])/dx[:,y,z]
         
-        bxcvx = (-1/J)*(dBydz / B**2.)
+        bxcvx = (1/J)*(dBydz / B**2.)
         bxcvy = (1/J)*((dBxdz - dBzdx) / B**2.)
-        bxcvz = (1/J)*(dBydx / B**2.)
+        bxcvz = (1/J)*(-dBydx / B**2.)
         
         f.write('bxcvz', bxcvz)
         f.write('bxcvx', bxcvx)
