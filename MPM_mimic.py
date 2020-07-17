@@ -86,7 +86,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
 
     vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
     n_CA = np.mean(n_offset[:,event_indices], axis=-1)
-    twindow = np.linspace(-50*dt, 100*dt, dt)
+    #twindow = np.linspace(-50*dt, 100*dt, dt)
     n_CA_max,n_CA_min = np.amax(n_CA),np.amin(n_CA)
     twindow = np.linspace(-50*dt, 100*dt, 150)
     tmin, tmax = np.min(twindow[n_CA > nmin+0.368*(nmax-nmin)]), np.max(twindow[n_CA > nmin+0.368*(nmax-nmin)])
