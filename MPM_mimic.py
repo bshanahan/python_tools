@@ -55,15 +55,20 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     vr = np.zeros((nt,nx,nz))
     events = np.zeros((nx,nz))
     trise = np.zeros((nx,nz))
+    I=np.zeros((nt,nx,nz))
 
     n = n[:,:,0,:]
 
-    nmax,nmin = np.amax((n[0,:,:])),np.amin((n[0,:,:]))
+    a=1
+    #for tt in np.arange(0,nt):
+    I=n
+
+    Imax,Imin = np.amax((I[0,:,:])),np.amin((I[0,:,:]))
 
     for k in np.arange(0,nz):
         for i in np.arange(0,nx):
-            if(np.any(n[t_min:,i,k] >  nmin+0.368*(nmax-nmin))):
-                trise[i,k] = int(np.argmax(n[t_min:,i,k] > nmin+0.368*(nmax-nmin))+t_min)
+            if(np.any(I[t_min:,i,k] >  Imin+0.368*(Imax-Imin))):
+                trise[i,k] = int(np.argmax(I[t_min:,i,k] > Imin+0.368*(Imax-Imin))+t_min)
                 events[i,k] = 1
                 Epol[:,i,k] = (phi[:,i,0, (k+probe_offset)%(nz-1)] -  phi[:,i,0, (k-probe_offset)%(nz-1)])/0.01
                 vr[:,i,k] = Epol[:,i,k] / B0
@@ -72,24 +77,24 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     events_flat = events.flatten()
     Epol_flat = Epol.reshape(nt,nx*nz)
     vr_flat = vr.reshape(nt,nx*nz)
-    n_flat = n.reshape(nt,nx*nz)
+    I_flat = I.reshape(nt,nx*nz)
     
     vr_offset = np.zeros((150,nx*nz))
-    n_offset = np.zeros((150,nx*nz))
+    I_offset = np.zeros((150,nx*nz))
     event_indices = []
     for count in np.arange(0,nx*nz):
         for t in np.arange(trange[0],trange[-1]):
             if (t==np.int(trise_flat[count])):
                 event_indices.append(count)
                 vr_offset[:,count] = vr_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
-                n_offset[:,count] = n_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
+                I_offset[:,count] = I_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
 
     vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
-    n_CA = np.mean(n_offset[:,event_indices], axis=-1)
-    twindow = np.linspace(-50*dt, 100*dt, dt)
-    n_CA_max,n_CA_min = np.amax(n_CA),np.amin(n_CA)
+    I_CA = np.mean(I_offset[:,event_indices], axis=-1)
+    #twindow = np.linspace(-50*dt, 100*dt, dt)
+    I_CA_max,I_CA_min = np.amax(I_CA),np.amin(I_CA)
     twindow = np.linspace(-50*dt, 100*dt, 150)
-    tmin, tmax = np.min(twindow[n_CA > nmin+0.368*(nmax-nmin)]), np.max(twindow[n_CA > nmin+0.368*(nmax-nmin)])
+    tmin, tmax = np.min(twindow[I_CA > Imin+0.368*(Imax-Imin)]), np.max(twindow[I_CA > Imin+0.368*(Imax-Imin)])
     t_e = tmax-tmin
 
     v,pos_fit,pos,r,z,t = calc_com_velocity(path=path,fname=None)
@@ -122,7 +127,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     if not detailed_return:
         return  delta_measured, delta_real_mean, vr_CA, v
     else:
-        return  delta_measured, delta_real_mean, vr_CA, v, n_CA*n0, len(event_indices), t_e, events
+        return  delta_measured, delta_real_mean, vr_CA, v, I_CA*n0, len(event_indices), t_e, events
 
 
 def calc_com_velocity(path = "." ,fname="rot_ell.curv.68.16.128.Ic_02.nc", tmax=-1, track_peak=False):
