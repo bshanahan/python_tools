@@ -5,7 +5,7 @@ from boututils import calculus as calc
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
-def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50):
+def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50, pin_distance=[0.005,0.005],inclination=0.001):
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
 
@@ -13,7 +13,8 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     path to BOUT++ dmp files 
     time range for measurements (index)
     detailed_return (bool) -- whether or not extra information is returned.
-
+    pin_distance --distance between pins:center pin and upper pin; center and lower pin
+    inclination -- inclination of probe head to magnetic surfaces
     returns: 
     delta_measured -- measured blob size
     delta_real_mean -- real blob size
@@ -50,7 +51,8 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     nx = n.shape[1]
     ny = n.shape[2]
     nz = n.shape[3]
-    probe_offset = int((0.005/Lz)*nz)
+    probe_offset = [int((pin_distance[0]/Lz)*nz),int((pin_distance[1]/Lz)*nz)]
+    probe_misalignment=int(( inclination/Lx)*nx) # Sollte inklination  als winkel angegeben werden können?
 
     Epol = np.zeros((nt,nx,nz))
     vr = np.zeros((nt,nx,nz))
@@ -79,7 +81,9 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
             if(np.any(I[t_min:,i,k] >  Imin+0.368*(Imax-Imin))):
                 trise[i,k] = int(np.argmax(I[t_min:,i,k] > Imin+0.368*(Imax-Imin))+t_min)
                 events[i,k] = 1
-                Epol[:,i,k] = (phi[:,i,0, (k+probe_offset)%(nz-1)] -  phi[:,i,0, (k-probe_offset)%(nz-1)])/0.01
+                Epol[:,i,k] = (phi[:,(i+probe_misalignment)%(nx-1),0, (k+probe_offset[0])%(nz-1)] -  phi[:,(i-probe_misalignment)%(nx-1),0, (k-probe_offset[1])%(nz-1)])/0.01
+              
+ #Epol[:,i,k] = (phi[:,(i+probe_misalignment)%(nx-1),0, (k+probe_offset[1])%(nz-1)] -  phi[:,(i-probe_misalignment)%(nx-1),0, (k-probe_offset[2])%(nz-1)])/0.01
                 vr[:,i,k] = Epol[:,i,k] / B0
 
     trise_flat = trise.flatten()
