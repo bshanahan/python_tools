@@ -51,8 +51,11 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     nx = n.shape[1]
     ny = n.shape[2]
     nz = n.shape[3]
+
     probe_offset = [int((pin_distance[0]/Lz)*nz),int((pin_distance[1]/Lz)*nz)]
-    probe_misalignment=int(( inclination/Lx)*nx) # Sollte inklination  als winkel angegeben werden können?
+    probe_misalignment=int(( inclination/Lx)*nx) 
+    #distance between outer probs
+    d=np.sqrt( (np.sum(pin_distance))**2+(2*inclination)**2)
 
     Epol = np.zeros((nt,nx,nz))
     vr = np.zeros((nt,nx,nz))
@@ -66,6 +69,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     el=1.602e-19
     m_i= 1.672e-27
     kb= 1.381e-23
+
 
     Te=np.divide(Pe,n)
     Pe=0
@@ -81,7 +85,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
             if(np.any(I[t_min:,i,k] >  Imin+0.368*(Imax-Imin))):
                 trise[i,k] = int(np.argmax(I[t_min:,i,k] > Imin+0.368*(Imax-Imin))+t_min)
                 events[i,k] = 1
-                Epol[:,i,k] = (phi[:,(i+probe_misalignment)%(nx-1),0, (k+probe_offset[0])%(nz-1)] -  phi[:,(i-probe_misalignment)%(nx-1),0, (k-probe_offset[1])%(nz-1)])/0.01
+                Epol[:,i,k] = (phi[:,(i+probe_misalignment),0, (k+probe_offset[0])%(nz-1)] -  phi[:,(i-probe_misalignment),0, (k-probe_offset[1])%(nz-1)])/d
               
  #Epol[:,i,k] = (phi[:,(i+probe_misalignment)%(nx-1),0, (k+probe_offset[1])%(nz-1)] -  phi[:,(i-probe_misalignment)%(nx-1),0, (k-probe_offset[2])%(nz-1)])/0.01
                 vr[:,i,k] = Epol[:,i,k] / B0
@@ -138,9 +142,9 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     print ("Velocity measurement error: {}% ".format(np.around(100*np.max(vr_CA)/np.max(v[trange]),decimals=2)))
 
     if not detailed_return:
-        return  delta_measured, delta_real_mean, vr_CA, v
+        return  delta_measured, delta_real_mean, vr_CA, v[trange]
     else:
-        return  delta_measured, delta_real_mean, vr_CA, v, I_CA*n0, len(event_indices), t_e, events
+        return  delta_measured, delta_real_mean, vr_CA, v[trange], I_CA*n0, len(event_indices), t_e, events,twindow
 
 
 def calc_com_velocity(path = "." ,fname="rot_ell.curv.68.16.128.Ic_02.nc", tmax=-1, track_peak=False):
