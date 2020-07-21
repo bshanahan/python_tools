@@ -45,7 +45,7 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
 
     if (curvilinear and calc_curvature):
         print("calculating curvature...")
-        calc_curvilinear_curvature(fname, field, grid)
+        calc_curvilinear_curvature(fname, field, grid, maps)
 
     if (calc_curvature and smooth_curvature):
         smooth_metric(fname, write_to_file=True, return_values=False, smooth_metric=True)
@@ -187,15 +187,11 @@ def get_W7X_vessel(phi=[0],nz=256):
     return lines
 
 ## calculate curvature for curvilinear grids
-def calc_curvilinear_curvature(fname, field, grid):
+def calc_curvilinear_curvature(fname, field, grid, maps):
         from scipy.signal import savgol_filter
 
         f = DataFile(str(fname), write=True)
         B = f.read("B")
-        dBydz = np.zeros(np.shape(B))
-        dBydx = np.zeros(np.shape(B))
-        dBxdz = np.zeros(np.shape(B))
-        dBzdx = np.zeros(np.shape(B))
         dx = grid.metric()["dx"]
         dz = grid.metric()["dz"]
         g_11 = grid.metric()["g_xx"]
@@ -204,29 +200,66 @@ def calc_curvilinear_curvature(fname, field, grid):
         g_12 = 0.0
         g_13 = grid.metric()["g_xz"]
         g_23 = 0.0
-        J = np.sqrt(g_11*(g_22*g_33 - g_23*g_23) + g_12*(g_13*g_23 - g_12*g_33) + g_13*(g_12*g_23 - g_22*g_23))
-        Bx_smooth = np.zeros(B.shape)
-        By_smooth = np.zeros(B.shape)
-        Bz_smooth = np.zeros(B.shape)
 
+        GR = np.zeros(B.shape)
+        GZ = np.zeros(B.shape)
+        Gphi = np.zeros(B.shape)
+        dRdz = np.zeros(B.shape)
+        dZdz = np.zeros(B.shape)
+        dRdx = np.zeros(B.shape)
+        dZdx = np.zeros(B.shape)
+        
         for y in np.arange(0,B.shape[1]):
             pol,_ = grid.getPoloidalGrid(y)
             R = pol.R
             Z = pol.Z
+            # G = \vec{B}/B, here in cylindrical coordinates
+            GR[:,y,:] = field.Bxfunc(R,y,Z)/((B[:,y,:])**2)
+            GZ[:,y,:] = field.Bzfunc(R,y,Z)/((B[:,y,:])**2)
+            Gphi[:,y,:] = field.Byfunc(R,y,Z)/((B[:,y,:])**2)
             for x in np.arange(0,B.shape[0]):
-                Bx_smooth[x,y,:] = savgol_filter(field.Bxfunc(R[x,:],y,Z[x,:]),np.int(np.ceil(B.shape[-1]/21)//2*2+1),5)
-                By_smooth[x,y,:] = savgol_filter(field.Byfunc(R[x,:],y,Z[x,:]),np.int(np.ceil(B.shape[-1]/21)//2*2+1),5)
-                
-                dBydz[x,y,:] = calc.deriv(By_smooth[x,y,:])/dz[x,y,:]
-                dBxdz[x,y,:] = calc.deriv(Bx_smooth[x,y,:])/dz[x,y,:]
+                dRdz[x,y,:] = calc.deriv(R[x,:])/dz[x,y,:]
+                dZdz[x,y,:] = calc.deriv(Z[x,:])/dz[x,y,:]
             for z in np.arange(0,B.shape[-1]):
-                Bz_smooth[:,y,z] = savgol_filter(field.Bzfunc(R[:,z],y,Z[:,z]),np.int(np.ceil(B.shape[0]/7)//2*2+1),5)
-                dBzdx[:,y,z] = calc.deriv(Bz_smooth[:,y,z])/dx[:,y,z]
-                dBydx[:,y,z] = calc.deriv(By_smooth[:,y,z])/dx[:,y,z]
+                dRdx[:,y,z] = calc.deriv(R[:,z])/dx[:,y,z]
+                dZdx[:,y,z] = calc.deriv(Z[:,z])/dx[:,y,z]
+
+        R = f.read("R")
+        Z = f.read("Z")
+        dy = f.read("dy")
+
+        ## calculate Jacobian and contravariant terms in curvilinear coordinates
+        J = R * (dZdx * dRdz - dZdz * dRdx)
+        Gx = (GR*dZdz - GZ*dRdz)*(R/J)
+        Gz = (-GR*dZdx + GZ*dRdx)*(R/J)
         
-        bxcvx = (1/J)*(dBydz / B**2.)
-        bxcvy = (1/J)*((dBxdz - dBzdx) / B**2.)
-        bxcvz = (1/J)*(-dBydx / B**2.)
+        G_x = Gx*g_11 + Gphi*g_12 + Gz*g_13
+        G_y = Gx*g_12 + Gphi*g_22 + Gz*g_23
+        G_z = Gx*g_13 + Gphi*g_23 + Gz*g_33
+
+        dG_zdy = np.zeros(B.shape)
+        dG_ydz = np.zeros(B.shape)
+        dG_xdz = np.zeros(B.shape)
+        dG_zdx = np.zeros(B.shape)
+        dG_ydx = np.zeros(B.shape)
+        dG_xdy = np.zeros(B.shape)
+        for y in np.arange(0,B.shape[1]):
+            for x in np.arange(0,B.shape[0]):
+                dG_ydz[x,y,:] = calc.deriv(G_y[x,y,:])/dz[x,y,:]
+                dG_xdz[x,y,:] = calc.deriv(G_x[x,y,:])/dz[x,y,:]
+            for z in np.arange(0,B.shape[-1]):
+                dG_ydx[:,y,z] = calc.deriv(G_y[:,y,z])/dx[:,y,z]
+                dG_zdx[:,y,z] = calc.deriv(G_z[:,y,z])/dx[:,y,z]
+
+        #this should really use the maps...
+        for x in np.arange(0,B.shape[0]):
+            for z in np.arange(0,B.shape[-1]):
+                dG_zdy[x,:,z] = calc.deriv(G_z[x,:,z])/dy[x,:,z]
+                dG_xdy[x,:,z] = calc.deriv(G_x[x,:,z])/dy[x,:,z]
+                
+        bxcvx = (dG_zdy - dG_ydz)/J
+        bxcvy = (dG_xdz - dG_zdx)/J
+        bxcvz = (dG_ydx - dG_xdy)/J
         
         f.write('bxcvz', bxcvz)
         f.write('bxcvx', bxcvx)
