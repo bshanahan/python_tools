@@ -93,11 +93,10 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     tmin, tmax = np.min(twindow[n_CA > nmin+0.368*(nmax-nmin)]), np.max(twindow[n_CA > nmin+0.368*(nmax-nmin)])
     t_e = tmax-tmin
 
-    v,pos_fit,pos,r,z,t = calc_com_velocity(path=path,fname=None)
+    v,pos_fit,pos,r,z,t = calc_com_velocity(path=path,fname=None,tmax=trange[-1])
 
-    
-    max_z_loc = np.where(z == np.max(z))
-    delta_measured = t_e*(np.max(z)-z[0])/(dt*270)
+    ## this next line could be more elegant...
+    delta_measured = t_e*(np.max(z)-z[0])/(dt*len(trange))
     n_real = n[trange,:,:]
     n_real_max = np.zeros((tsample_size))
     n_real_min = np.zeros((tsample_size))
