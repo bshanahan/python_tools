@@ -229,9 +229,9 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
         dy = f.read("dy")
 
         ## calculate Jacobian and contravariant terms in curvilinear coordinates
-        J = R * (dZdx * dRdz - dZdz * dRdx)
+        J = R * (dZdz * dRdx - dZdx * dRdz )
         Gx = (GR*dZdz - GZ*dRdz)*(R/J)
-        Gz = (-GR*dZdx + GZ*dRdx)*(R/J)
+        Gz = (GZ*dRdx - GR*dZdx)*(R/J)
         
         G_x = Gx*g_11 + Gphi*g_12 + Gz*g_13
         G_y = Gx*g_12 + Gphi*g_22 + Gz*g_23
@@ -256,14 +256,14 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
             for z in np.arange(0,B.shape[-1]):
                 dG_zdy[x,:,z] = calc.deriv(G_z[x,:,z])/dy[x,:,z]
                 dG_xdy[x,:,z] = calc.deriv(G_x[x,:,z])/dy[x,:,z]
-                
+
         bxcvx = (dG_zdy - dG_ydz)/J
         bxcvy = (dG_xdz - dG_zdx)/J
         bxcvz = (dG_ydx - dG_xdy)/J
-        
-        f.write('bxcvz', bxcvz)
+        bxcv = g_11*(bxcvx**2) + g_22*(bxcvy**2) + g_33*(bxcvz**2) + 2*(bxcvz*bxcvx*g_13) 
         f.write('bxcvx', bxcvx)
         f.write('bxcvy', bxcvy)
+        f.write('bxcvz', bxcvz)
         f.close()
 
 ## smooth the metric tensor components
