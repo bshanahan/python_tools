@@ -5,7 +5,7 @@ from boututils import calculus as calc
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
-def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50, pin_distance=[0.005,0.005],inclination=0.001):
+def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50, pin_distance=[0.005,0.005],inclination=0):
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
 
@@ -43,7 +43,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     Lx = ((dx.shape[0]-4)*dx[0,0])/(R0)
     Lz = dz * R0 * n.shape[-1]
 
-    # print ("Synthetic Measurement Frequency: {} MHz".format(np.around(1e-6/dt,decimals=3)))
+    
 
     tsample_size = t_range[-1]-t_range[0]
     trange = np.linspace(t_range[0],t_range[-1]-1, tsample_size, dtype='int')
@@ -61,23 +61,24 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     vr = np.zeros((nt,nx,nz))
     events = np.zeros((nx,nz))
     trise = np.zeros((nx,nz))
-    #I=np.zeros((nt,nx,nz))
+    
 
     n = n[:,:,0,:]
     Pe=Pe[:,:,0,:]
+    
+    # calcualtion the ion saturation current
+    qe=1.602176634e-19
+    m_i= 1.672621898e-27
 
-    el=1.602e-19
-    m_i= 1.672e-27
-    kb= 1.381e-23
-
-
-    Te=np.divide(Pe,n)
+    P=Pe*T0*n0 
+    Te=np.divide(P,n*n0)
     Pe=0
-    a=0.49*el*np.sqrt((2*kb*Te)/m_i)
-    #for tt in np.arange(0,nt):
-    I=n
-    I*=a
+    P=0
 
+    J_factor=n0*0.49*qe*np.sqrt((qe*Te)/(m_i))*1e-3 
+    J0=n0*0.49*qe*np.sqrt((qe*T0)/(m_i))*1e-3 
+    I=np.multiply(n,J_factor)
+    
     Imax,Imin = np.amax((I[0,:,:])),np.amin((I[0,:,:]))
 
     for k in np.arange(0,nz):
@@ -86,8 +87,6 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
                 trise[i,k] = int(np.argmax(I[t_min:,i,k] > Imin+0.368*(Imax-Imin))+t_min)
                 events[i,k] = 1
                 Epol[:,i,k] = (phi[:,(i+probe_misalignment),0, (k+probe_offset[0])%(nz-1)] -  phi[:,(i-probe_misalignment),0, (k-probe_offset[1])%(nz-1)])/d
-              
- #Epol[:,i,k] = (phi[:,(i+probe_misalignment)%(nx-1),0, (k+probe_offset[1])%(nz-1)] -  phi[:,(i-probe_misalignment)%(nx-1),0, (k-probe_offset[2])%(nz-1)])/0.01
                 vr[:,i,k] = Epol[:,i,k] / B0
 
     trise_flat = trise.flatten()
@@ -108,7 +107,6 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
 
     vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
     I_CA = np.mean(I_offset[:,event_indices], axis=-1)
-    #twindow = np.linspace(-50*dt, 100*dt, dt)
     I_CA_max,I_CA_min = np.amax(I_CA),np.amin(I_CA)
     twindow = np.linspace(-50*dt, 100*dt, 150)
     tmin, tmax = np.min(twindow[I_CA > Imin+0.368*(Imax-Imin)]), np.max(twindow[I_CA > Imin+0.368*(Imax-Imin)])
@@ -117,8 +115,8 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     v,pos_fit,pos,r,z,t = calc_com_velocity(path=path,fname=None)
 
     
-    max_z_loc = np.where(z == np.max(z))
-    delta_measured = t_e*(np.max(z)-z[0])/(dt*270)
+    
+    delta_measured = t_e*(np.max(z)-z[0])/(dt*len(trange))
     n_real = n[trange,:,:]
     n_real_max = np.zeros((tsample_size))
     n_real_min = np.zeros((tsample_size))
@@ -144,7 +142,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     if not detailed_return:
         return  delta_measured, delta_real_mean, vr_CA, v[trange]
     else:
-        return  delta_measured, delta_real_mean, vr_CA, v[trange], I_CA*n0, len(event_indices), t_e, events,twindow
+        return  delta_measured, delta_real_mean, vr_CA, v[trange], I_CA, len(event_indices), t_e, events
 
 
 def calc_com_velocity(path = "." ,fname="rot_ell.curv.68.16.128.Ic_02.nc", tmax=-1, track_peak=False):
