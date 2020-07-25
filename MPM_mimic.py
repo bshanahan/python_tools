@@ -6,8 +6,8 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 
-def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=50, pin_distance=[0.005, 0.005],
-                    inclination=0):
+def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=50, pin_distance=np.array((0.005, 0.005)),
+                    inclination=0,distSecondProbe=0):
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
 
@@ -28,15 +28,51 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
     t_e -- time-width of I_sat peak
     events -- locations of measurements
     """
+
+
+    n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dist_probeheads,dt, t_array =loading_data (path, t_range, distSecondProbe)
+    
+    I, J0, Imax, Imin = finding_Isat(n, Pe, n0,T0)
+
+    trise, Epol,vr, events =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+
+    t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt)
+    
+    vr_2Probes, delta_t_measured, twindow, delta_t, events_2Probes = second_prob( t_array, dist_probeheads, trise,t_range, distSecondProbe)
+
+
+    delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
+
+    v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None, tmax=t_range[1] - 1)
+
+    
+
+    v_pol = (np.max(z) - z[t_range[0]]) / (dt * len(trange))
+    delta_measured = t_e * v_pol
+    velocity_error_1Probe = (np.max(vr_CA) - np.max(v)) / np.max(v)
+    velocity_error_2Probe = (np.max(vr_2Probes) - np.max(v)) / np.max(v)
+    blob_size_error = (delta_measured - delta_real_mean) / delta_real_mean
+
+    print("Number of events: {} ".format(np.around(len(event_indices), decimals=2)))
+    print("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
+    print("Velocity measurement error 1 Probe: {}% ".format(np.around(velocity_error_1Probe, decimals=2)))
+    print("Velocity measurement error 2 Probe: {}% ".format(np.around(velocity_error_2Probe, decimals=2)))
+    if not detailed_return:
+        return delta_measured, delta_real_mean, vr_CA, v[t_range[0]:]
+    else:
+        return delta_measured, delta_real_mean, vr_CA, v[t_range[0]:], I_CA - J0, len(event_indices), t_e, events, v_pol, vr_2Probes
+
+
+def loading_data(path,t_range,distSecondProbe):
     n = collect("Ne", path=path, info=False)
     Pe = collect("Pe", path=path, info=False)
     n0 = collect("Nnorm", path=path, info=False)
     T0 = collect("Tnorm", path=path, info=False)
     phi = collect("phi", path=path, info=False) * T0
     phi -= phi[0, 0, 0, 0]
-    t_array = collect("t_array", path=path, info=False)
     wci = collect("Omega_ci", path=path, info=False)
-    dt = (t_array[1] - t_array[0]) / wci
+    t_array = collect("t_array", path=path, info=False)/wci
+    dt = (t_array[1] - t_array[0]) 
     rhos = collect('rho_s0', path=path, info=False)
     R0 = collect('R0', path=path, info=False) * rhos
     B0 = collect('Bnorm', path=path, info=False)
@@ -47,31 +83,43 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
 
     tsample_size = t_range[-1] - t_range[0]
     trange = np.linspace(t_range[0], t_range[-1] - 1, tsample_size, dtype='int')
-
+    nx = n.shape[1]
+    dist_probeheads= int((distSecondProbe / Lx) * nx)
 
     n = n[:, :, 0, :]
     Pe = Pe[:, :, 0, :]
-    
-    I, J0, Imax, Imin = finding_Isat(n, Pe, n0,T0)
+    return n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dist_probeheads,dt, t_array
 
-    trise, Epol,vr, events =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
-    t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt)
-    delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
-    v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None, tmax=t_range[1] - 1)
+def second_prob(t_array,dist_probeheads,trise, t_range,distSecondProbe):
+    """a second Probe is used to determine the radial velocity """
+    nx = trise.shape[0]
+    nz = trise.shape[1]
+    delta_t=np.zeros((nx-dist_probeheads, nz))
+    events_SecProbe=np.zeros((nx-dist_probeheads, nz), dtype=int)
 
-    v_pol = (np.max(z) - z[t_range[0]]) / (dt * len(trange))
-    delta_measured = t_e * v_pol
-    velocity_error = (np.max(vr_CA) - np.max(v)) / np.max(v)
-    blob_size_error = (delta_measured - delta_real_mean) / delta_real_mean
+    for k in np.arange(0, nz):
+        for i in np.arange(0, nx-dist_probeheads):
+            if (t_array[int(trise[i,k])]>0) and (t_array[int(trise[i+dist_probeheads,k])]>0):
+                events_SecProbe[i, k] = 1
+                delta_t[i,k]=t_array[int(trise[i+dist_probeheads,k])]-t_array[int(trise[i,k])]
 
-    print("Number of events: {} ".format(np.around(len(event_indices), decimals=2)))
-    print("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
-    print("Velocity measurement error: {}% ".format(np.around(velocity_error, decimals=2)))
 
-    if not detailed_return:
-        return delta_measured, delta_real_mean, vr_CA, v[t_range[0]:]
-    else:
-        return delta_measured, delta_real_mean, vr_CA, v[t_range[0]:], I_CA - J0, len(event_indices), t_e, events, v_pol
+    twindow1=np.zeros((nx-dist_probeheads, nz))
+    twindow2=np.zeros((nx-dist_probeheads, nz))
+    for k in np.arange(0, nz):
+        for i in np.arange(0, nx-dist_probeheads):
+            for t in np.arange(t_range[0], t_range[-1]):
+                if (trise[i,k]>=t_range[0]) and (trise[i,k]<t_range[-1]):
+                    twindow1[i,k]=1
+                if (trise[i+dist_probeheads,k]>=t_range[0]) and (trise[i+dist_probeheads,k]<t_range[-1]):
+                    twindow2[i,k]=1
+    twindow=twindow1*twindow2
+
+    delta_t_measured=np.mean(delta_t[twindow==1])   
+    events_2Probes=len(delta_t[twindow==1])
+    vr_2Probs=distSecondProbe/delta_t_measured
+
+    return vr_2Probs, delta_t_measured, twindow, delta_t, events_2Probes
 
 
 def finding_Isat(n, Pe, n0, T0):
