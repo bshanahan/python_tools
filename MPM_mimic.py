@@ -30,15 +30,15 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
     """
 
 
-    n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dist_probeheads,dt, t_array =loading_data (path, t_range, distSecondProbe)
+    n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dt, t_array =loading_data (path, t_range)
     
     I, J0, Imax, Imin = finding_Isat(n, Pe, n0,T0)
 
-    trise, Epol,vr, events =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+    trise, Epol,vr, event, sinclinationAngle =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
-    t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt)
+    t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt,t_A)
     
-    vr_2Probes, delta_t_measured, twindow, delta_t, events_2Probes = second_prob( t_array, dist_probeheads, trise,t_range, distSecondProbe)
+    vr_2Probes, delta_t_measured, twindow, delta_t, events_2Probes = second_prob( t_array, Lx, trise,t_range, distSecondProbe)
 
 
     delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
@@ -63,7 +63,65 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
         return delta_measured, delta_real_mean, vr_CA, v[t_range[0]:], I_CA - J0, len(event_indices), t_e, events, v_pol, vr_2Probes
 
 
-def loading_data(path,t_range,distSecondProbe):
+def inclinationOfProbe(path,t_range=[150, 200],inclin = np.arange(-0.003, 0.0031, 0.0005), pin_distance=np.array((0.005, 0.005)),t_min=50,t_A=np.array((100,150))):
+
+    n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dt, t_array =loading_data (path, t_range)
+    
+    I, J0, Imax, Imin = finding_Isat(n, Pe, n0,T0)
+    vr_CA=np.zeros((t_A[1]+t_A[0],inclin.shape[0]))
+    inclinationAngle=np.zeros(inclin.shape[0])
+    for ii in range(inclin.shape[0]):
+        trise, Epol,vr, events,inclinationAngle[ii] =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclin[ii],t_min)
+
+        t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt,t_A)
+
+
+    delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
+
+    v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None, tmax=t_range[1] - 1)
+
+    v_pol = (np.max(z) - z[t_range[0]]) / (dt * len(trange))
+    delta_measured = t_e * v_pol
+    velocity_error_1Probe = (np.max(vr_CA, axis=0) - np.max(v)) / np.max(v)
+
+    twindow*=1e6
+    np.savez(path+"/inclination2",velocity_error_1Probe=velocity_error_1Probe,twindow=twindow, vr_CA=vr_CA, inclin=inclin,inclinationAngle=inclinationAngle)
+
+    plt.rc('font', family='Serif')
+    plt.figure(figsize=(8,4.5))
+    plt.plot( twindow,vr_CA[:,0],'v', label=r'Inclination = '+ str(inclin[0])+'mm')
+    plt.plot( twindow,vr_CA[:,3],'s', label=r'Inclination = '+ str(inclin[3])+'mm')
+    plt.plot( twindow,vr_CA[:,6],'o', label=r'Inclination = '+ str(inclin[6])+'mm')
+    plt.plot( twindow[50:100],v[t_range[0]:],'k--', label=r'Real velocity')
+
+    plt.grid(alpha=0.5)
+    plt.xlim(-100, 100)
+    plt.xlabel(r't [$\mu s$]', fontsize=18)
+    plt.ylabel(r'$\mathrm{v}$ [m/s]', fontsize=18)
+    plt.tick_params('both', labelsize=14)
+    plt.tight_layout()
+    plt.legend(fancybox=True, loc='upper left', framealpha=0, fontsize=12)
+    plt.savefig(path+'v_inclination2.png', dpi=300)
+    plt.show()
+
+
+
+    plt.rc('font', family='Serif')
+    plt.figure(figsize=(8,4.5))
+    plt.plot(inclinationAngle,velocity_error_1Probe[:],'v', label=r'Velocity Error from Inclination')
+    
+    plt.grid(alpha=0.5)     
+    plt.xlabel(r'Inclination Angle ', fontsize=18)
+    plt.ylabel(r'Velocity error [$\%$]', fontsize=18)
+    plt.tick_params('both', labelsize=14)
+    plt.tight_layout()
+    plt.legend(fancybox=True, loc='upper left', framealpha=0, fontsize=12)
+    plt.savefig(path+'inclination_error2.png', dpi=300)
+    plt.show()
+    return
+
+
+def loading_data(path,t_range):
     n = collect("Ne", path=path, info=False)
     Pe = collect("Pe", path=path, info=False)
     n0 = collect("Nnorm", path=path, info=False)
@@ -84,16 +142,17 @@ def loading_data(path,t_range,distSecondProbe):
     tsample_size = t_range[-1] - t_range[0]
     trange = np.linspace(t_range[0], t_range[-1] - 1, tsample_size, dtype='int')
     nx = n.shape[1]
-    dist_probeheads= int((distSecondProbe / Lx) * nx)
+    
 
     n = n[:, :, 0, :]
     Pe = Pe[:, :, 0, :]
-    return n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dist_probeheads,dt, t_array
+    return n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dt, t_array
 
-def second_prob(t_array,dist_probeheads,trise, t_range,distSecondProbe):
+def second_prob(t_array,Lx,trise, t_range,distSecondProbe):
     """a second Probe is used to determine the radial velocity """
     nx = trise.shape[0]
     nz = trise.shape[1]
+    dist_probeheads= int((distSecondProbe / Lx) * nx)
     delta_t=np.zeros((nx-dist_probeheads, nz))
     events_SecProbe=np.zeros((nx-dist_probeheads, nz), dtype=int)
 
@@ -151,7 +210,7 @@ def geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t
     probe_misalignment = int((inclination / Lx) * nx)
     # distance between outer probs
     d = np.sqrt((np.sum(pin_distance)) ** 2 + (2 * inclination) ** 2)
-
+    inclinationAngle=np.arcsin(inclination/d)
     Epol = np.zeros((nt, nx, nz))
     vr = np.zeros((nt, nx, nz))
     events = np.zeros((nx, nz))
@@ -164,10 +223,10 @@ def geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t
                 Epol[:, i, k] = (phi[:, (i + probe_misalignment), 0, (k + probe_offset[0]) % (nz - 1)] - phi[:, (i - probe_misalignment), 0, (k - probe_offset[1]) % (nz - 1)]) / d
                 vr[:, i, k] = Epol[:, i, k] / B0
 
-    return trise, Epol,vr, events
+    return trise, Epol,vr, events,inclinationAngle
 
 
-def average_messurments(trise,Epol,vr,events,I, Imin, Imax,trange,dt):
+def average_messurments(trise,Epol,vr,events,I, Imin, Imax,trange,dt,t_A):
 
     nt = I.shape[0]
     nx = I.shape[1]
@@ -179,19 +238,19 @@ def average_messurments(trise,Epol,vr,events,I, Imin, Imax,trange,dt):
     vr_flat = vr.reshape(nt, nx * nz)
     I_flat = I.reshape(nt, nx * nz)
 
-    vr_offset = np.zeros((150, nx * nz))
-    I_offset = np.zeros((150, nx * nz))
+    vr_offset = np.zeros((t_A[1]+t_A[0], nx * nz))
+    I_offset = np.zeros((t_A[1]+t_A[0], nx * nz))
     event_indices = []
     for count in np.arange(0, nx * nz):
         for t in np.arange(trange[0], trange[-1]):
             if (t == np.int(trise_flat[count])):
                 event_indices.append(count)
-                vr_offset[:, count] = vr_flat[np.int(trise_flat[count]) - 50:np.int(trise_flat[count] + 100), count]
-                I_offset[:, count] = I_flat[np.int(trise_flat[count]) - 50:np.int(trise_flat[count] + 100), count]
+                vr_offset[:, count] = vr_flat[np.int(trise_flat[count]) - t_A[0]:np.int(trise_flat[count] + t_A[1]), count]
+                I_offset[:, count] = I_flat[np.int(trise_flat[count]) - t_A[0]:np.int(trise_flat[count] + t_A[1]), count]
 
     vr_CA = np.mean(vr_offset[:, event_indices], axis=-1)
     I_CA = np.mean(I_offset[:, event_indices], axis=-1)
-    twindow = np.linspace(-50 * dt, 100 * dt, 150)
+    twindow = np.linspace(-t_A[0] * dt, t_A[1] * dt, t_A[1]+t_A[0])
     tmin, tmax = np.min(twindow[I_CA > Imin + 0.368 * (Imax - Imin)]), np.max(
         twindow[I_CA > Imin + 0.368 * (Imax - Imin)])
     t_e = tmax - tmin
