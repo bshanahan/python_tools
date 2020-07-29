@@ -6,8 +6,7 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 
-def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=50, pin_distance=np.array((0.005, 0.005)),
-                    inclination=0,distSecondProbe=0):
+def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=50, pin_distance=np.array((0.005, 0.005)), inclination=0, distSecondProbe=np.arange(0.001,0.011,0.001) ):
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
 
@@ -34,11 +33,15 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
     
     I, J0, Imax, Imin = finding_Isat(n, Pe, n0,T0)
 
-    trise, Epol,vr, event, sinclinationAngle =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+    trise, Epol,vr, events, inclinationAngle =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
-    t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt,t_A)
-    
-    vr_2Probes, delta_t_measured, twindow, delta_t, events_2Probes = second_prob( t_array, Lx, trise,t_range, distSecondProbe)
+    t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A=np.array((50,100)))
+    t_range_2P=[t_range[0],t_array.shape[0]]
+    vr_2P=np.zeros(distSecondProbe.shape[0])
+    events_2Probes=np.zeros(distSecondProbe.shape[0])
+    for dd in range(distSecondProbe.shape[0]):
+        vr_2P[dd], delta_t_measured, twindow, delta_t, events_2Probes[dd] = second_prob( t_array, Lx, trise, t_range, t_range_2P, distSecondProbe[dd],vr,I)
+        #plt.figure();plt.contourf(np.transpose(twindow));plt.show()
 
 
     delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
@@ -49,21 +52,38 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
 
     v_pol = (np.max(z) - z[t_range[0]]) / (dt * len(trange))
     delta_measured = t_e * v_pol
-    velocity_error_1Probe = (np.max(vr_CA) - np.max(v)) / np.max(v)
-    velocity_error_2Probe = (np.max(vr_2Probes) - np.max(v)) / np.max(v)
-    blob_size_error = (delta_measured - delta_real_mean) / delta_real_mean
+    velocity_error_1Probe =np.abs(100* (np.max(v) - np.max(vr_CA)) / np.max(v))
+    velocity_error_2Probe =np.abs(100* (np.max(v) - vr_2P) / np.max(v))
+    blob_size_error = 100*( delta_real_mean-delta_measured) / delta_real_mean
+    
+    np.savez(path+"/2Probe",velocity_error_1Probe=velocity_error_1Probe, velocity_error_2Probe=velocity_error_2Probe,twindow=twindow, vr_CA=vr_CA, vr_2P=vr_2P, events_2Probes=events_2Probes,t_range=t_range, t_range_2P= t_range_2P)
+ 
+    plt.rc('font', family='Serif')
+    plt.figure(figsize=(8,4.5))
+    plt.plot( distSecondProbe,velocity_error_2Probe,'v', label=r'Velocity error')
+
+
+    plt.grid(alpha=0.5)
+    plt.xlabel(r'distance [m]', fontsize=18)
+    plt.ylabel(r'Velocity error [$\%$]', fontsize=18)
+    plt.tick_params('both', labelsize=14)
+    plt.tight_layout()
+    plt.legend(fancybox=True, loc='upper left', framealpha=0, fontsize=12)
+    plt.savefig(path+'2Probs_error.png', dpi=300)
+    plt.show()
+
 
     print("Number of events: {} ".format(np.around(len(event_indices), decimals=2)))
     print("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
     print("Velocity measurement error 1 Probe: {}% ".format(np.around(velocity_error_1Probe, decimals=2)))
     print("Velocity measurement error 2 Probe: {}% ".format(np.around(velocity_error_2Probe, decimals=2)))
     if not detailed_return:
-        return delta_measured, delta_real_mean, vr_CA, v[t_range[0]:]
+        return 
     else:
         return delta_measured, delta_real_mean, vr_CA, v[t_range[0]:], I_CA - J0, len(event_indices), t_e, events, v_pol, vr_2Probes
 
 
-def inclinationOfProbe(path,t_range=[150, 200],inclin = np.arange(-0.003, 0.0031, 0.0005), pin_distance=np.array((0.005, 0.005)),t_min=50,t_A=np.array((100,150))):
+def inclinationOfProbe(path,t_range=[150, 200],inclin = np.arange(-0.003, 0.0031, 0.0005), pin_distance=np.array((0.005, 0.005)),t_min=50,t_A=np.array((150,200))):
 
     n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dt, t_array =loading_data (path, t_range)
     
@@ -78,9 +98,9 @@ def inclinationOfProbe(path,t_range=[150, 200],inclin = np.arange(-0.003, 0.0031
 
     delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
 
-    v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None, tmax=t_range[1] - 1)
+    v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None)
 
-    v_pol = (np.max(z) - z[t_range[0]]) / (dt * len(trange))
+    v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
     delta_measured = t_e * v_pol
     velocity_error_1Probe = (np.max(vr_CA, axis=0) - np.max(v)) / np.max(v)
 
@@ -89,10 +109,10 @@ def inclinationOfProbe(path,t_range=[150, 200],inclin = np.arange(-0.003, 0.0031
 
     plt.rc('font', family='Serif')
     plt.figure(figsize=(8,4.5))
-    plt.plot( twindow,vr_CA[:,0],'v', label=r'Inclination = '+ str(inclin[0])+'mm')
-    plt.plot( twindow,vr_CA[:,3],'s', label=r'Inclination = '+ str(inclin[3])+'mm')
-    plt.plot( twindow,vr_CA[:,6],'o', label=r'Inclination = '+ str(inclin[6])+'mm')
-    plt.plot( twindow[50:100],v[t_range[0]:],'k--', label=r'Real velocity')
+    plt.plot( twindow,vr_CA[:,6],'v', label=r'Inclination = '+ str(inclin[6])+'mm')
+    plt.plot( twindow,vr_CA[:,8],'s', label=r'Inclination = '+ str(inclin[8])+'mm')
+    plt.plot( twindow,vr_CA[:,10],'o', label=r'Inclination = '+ str(inclin[10])+'mm')
+    plt.plot( twindow,v[t_range[0]-t_A[0]:t_range[0]+t_A[1]],'k--', label=r'Real velocity')
 
     plt.grid(alpha=0.5)
     plt.xlim(-100, 100)
@@ -148,7 +168,7 @@ def loading_data(path,t_range):
     Pe = Pe[:, :, 0, :]
     return n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dt, t_array
 
-def second_prob(t_array,Lx,trise, t_range,distSecondProbe):
+def second_prob(t_array,Lx,trise, t_range, t_range_2P,distSecondProbe,vr,I):
     """a second Probe is used to determine the radial velocity """
     nx = trise.shape[0]
     nz = trise.shape[1]
@@ -170,9 +190,9 @@ def second_prob(t_array,Lx,trise, t_range,distSecondProbe):
             for t in np.arange(t_range[0], t_range[-1]):
                 if (trise[i,k]>=t_range[0]) and (trise[i,k]<t_range[-1]):
                     twindow1[i,k]=1
-                if (trise[i+dist_probeheads,k]>=t_range[0]) and (trise[i+dist_probeheads,k]<t_range[-1]):
+                if (trise[i+dist_probeheads,k]>=t_range_2P[0]) and (trise[i+dist_probeheads,k]<t_range_2P[-1]):
                     twindow2[i,k]=1
-    twindow=twindow1*twindow2
+    twindow=np.multiply(twindow1,twindow2)
 
     delta_t_measured=np.mean(delta_t[twindow==1])   
     events_2Probes=len(delta_t[twindow==1])
