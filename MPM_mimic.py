@@ -6,7 +6,7 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 
-def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=50, pin_distance=np.array((0.005, 0.005)), inclination=0, distSecondProbe=np.arange(0.001,0.011,0.001), t_range_2P=[100,300],t_A=np.array((50,100)) ):
+def synthetic_probe(path='.',  t_range=[100, 150], detailed_return=False, t_min=50, pin_distance=np.array((0.005, 0.005)), inclination=0, distSecondProbe=np.arange(0.001,0.011,0.001), t_range_2P=[100,300] ):
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
 
@@ -27,12 +27,31 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
     t_e -- time-width of I_sat peak
     events -- locations of measurements
     """
-
+    t_A=[t_range[0],nt-t_range[1]] 
 
     n, Pe,n0,T0,trange,Lx,Lz,B0,phi,tsample_size,dt, t_array =loading_data (path, t_range)
     
     I, J0, Imax, Imin = finding_Isat(n, Pe, n0,T0)
 
+    delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
+
+    v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None)
+
+#    if (WhatToDo=='Inclination'):
+#        print('bla')
+
+
+#    elif(WhatToDo=='Pin_distance'):
+#        print('bla')
+
+#    elif(whatToDo=='I_sat'):
+#        print('bla')
+
+#    elif(WhatToDo=='2Probes'):
+#       """setting some variabels """
+#        pin_distance=np.array((0.005, 0.005))
+#        inclination=0
+#        distSecondProbe=Iteration
 
     trise, Epol,vr, events, inclinationAngle =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
@@ -60,26 +79,27 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
         
 
 
-    delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
 
-    v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None)
 
     v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
     delta_measured = t_e * v_pol
     velocity_error_1Probe =np.abs(100* (np.max(v) - np.max(vr_CA)) / np.max(v))
     velocity_error_direct =np.abs(100* (np.max(v) - vr_2P) / np.max(v))
-    velocity_error_2Probe =np.abs(100* (np.max(v) - vr_CA_2P) / np.max(v))
+    velocity_error_2Probe =np.abs(100* (np.max(v) - np.max(vr_CA_2P,axis=0)) / np.max(v))
     blob_size_error = 100*( delta_real_mean-delta_measured) / delta_real_mean
     
-    np.savez(path+"/2Probe",velocity_error_1Probe=velocity_error_1Probe, velocity_error_2Probe=velocity_error_2Probe,twindow=twindow, vr_CA=vr_CA, vr_2P=vr_2P, events_2Probes=events_2Probes,t_range=t_range, t_range_2P= t_range_2P,t_index2P=t_index2P)
+    np.savez(path+"/2Probe",velocity_error_1Probe=velocity_error_1Probe, velocity_error_2Probe=velocity_error_2Probe, velocity_error_direct=velocity_error_direct, twindow=twindow, vr_CA=vr_CA, vr_2P=vr_2P, vr_CA_2P=vr_CA_2P, events_2Probes=events_2Probes,t_range=t_range, t_range_2P= t_range_2P,t_index2P=t_index2P,distSecondProbe=distSecondProbe)
  
+
+
     plt.rc('font', family='Serif')
     plt.figure(figsize=(8,4.5))
-    plt.plot( distSecondProbe,velocity_error_2Probe,'v', label=r'Velocity error')
-
+    plt.plot( distSecondProbe*1e3,np.full(distSecondProbe.shape[0],velocity_error_1Probe),'v', label=r'Velocity error 2. Probe')
+    plt.plot( distSecondProbe*1e3,velocity_error_2Probe,'o', label=r'Velocity error 2. Probe')
+    plt.plot( distSecondProbe*1e3,velocity_error_direct,'s', label=r'V Error time difference')
 
     plt.grid(alpha=0.5)
-    plt.xlabel(r'distance [m]', fontsize=18)
+    plt.xlabel(r'distance between Probes [mm]', fontsize=18)
     plt.ylabel(r'Velocity error [$\%$]', fontsize=18)
     plt.tick_params('both', labelsize=14)
     plt.tight_layout()
@@ -87,23 +107,10 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
     plt.savefig(path+'2Probs_error.png', dpi=300)
     plt.show()
 
-    plt.rc('font', family='Serif')
-    plt.figure(figsize=(8,4.5))
-    plt.plot( distSecondProbe,velocity_error_direct,'v', label=r'Velocity error')
-
-
-    plt.grid(alpha=0.5)
-    plt.xlabel(r'distance [m]', fontsize=18)
-    plt.ylabel(r'Velocity error [$\%$]', fontsize=18)
-    plt.tick_params('both', labelsize=14)
-    plt.tight_layout()
-    plt.legend(fancybox=True, loc='upper left', framealpha=0, fontsize=12)
-    plt.savefig(path+'v_direkt_error.png', dpi=300)
-    plt.show()
 
 
     print("Number of events: {} ".format(np.around(len(event_indices), decimals=2)))
-    print("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
+   # print("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
     print("Velocity measurement error 1 Probe: {}% ".format(np.around(velocity_error_1Probe, decimals=2)))
     print("Velocity measurement error 2 Probe: {}% ".format(np.around(velocity_error_2Probe, decimals=2)))
     print("Velocity measurement error direkt Probe: {}% ".format(np.around(velocity_error_direct, decimals=2)))
@@ -111,6 +118,7 @@ def synthetic_probe(path='.', t_range=[100, 150], detailed_return=False, t_min=5
         return 
     else:
         return delta_measured, delta_real_mean, vr_CA, v[t_range[0]:], I_CA - J0, len(event_indices), t_e, events_2Probes, v_pol, vr_2P,z
+
 
 
 def inclinationOfProbe(path,t_range=[150, 200],inclin = np.arange(-0.003, 0.0031, 0.0005), pin_distance=np.array((0.005, 0.005)),t_min=50,t_A=np.array((150,200))):
@@ -126,16 +134,12 @@ def inclinationOfProbe(path,t_range=[150, 200],inclin = np.arange(-0.003, 0.0031
         t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt,t_A)
 
 
-    delta_real_mean= real_size(n, trange, tsample_size, Lx, Lz)
-
     v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None)
 
-    v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
-    delta_measured = t_e * v_pol
-    velocity_error_1Probe = (np.max(vr_CA, axis=0) - np.max(v)) / np.max(v)
+    velocity_error_1Probe = np.abs(100* (np.max(v) - np.max(vr_CA, axis=0)) / np.max(v))
 
     twindow*=1e6
-    np.savez(path+"/inclination2",velocity_error_1Probe=velocity_error_1Probe,twindow=twindow, vr_CA=vr_CA, inclin=inclin,inclinationAngle=inclinationAngle)
+    np.savez(path+"/inclination2",velocity_error_1Probe=velocity_error_1Probe,twindow=twindow, vr_CA=vr_CA, inclin=inclin,inclinationAngle=inclinationAngle, v=v, t_range=t_range)
 
     plt.rc('font', family='Serif')
     plt.figure(figsize=(8,4.5))
@@ -156,10 +160,17 @@ def inclinationOfProbe(path,t_range=[150, 200],inclin = np.arange(-0.003, 0.0031
 
 
 
-    plt.rc('font', family='Serif')
-    plt.figure(figsize=(8,4.5))
-    plt.plot(inclinationAngle,velocity_error_1Probe[:],'v', label=r'Velocity Error from Inclination')
-    
+    fig = plt.figure()
+    ax  = fig.add_subplot(111)
+
+    ax.plot(inclinationAngle,velocity_error_1Probe[:],'v', label=r'Velocity Error')
+
+
+    x_tick = np.arange(-np.pi/8, np.pi/8+0.01,np.pi/16) 
+
+    x_label = [r"$-\frac{\pi}{8}$", r"$-\frac{\pi}{16}$", r"$0$", r"$+\frac{\pi}{16}$",   r"$+\frac{\pi}{8}$"]
+    ax.set_xticks(x_tick)
+    ax.set_xticklabels(x_label, fontsize=20)
     plt.grid(alpha=0.5)     
     plt.xlabel(r'Inclination Angle ', fontsize=18)
     plt.ylabel(r'Velocity error [$\%$]', fontsize=18)
@@ -295,6 +306,8 @@ def average_messurments(trise,Epol,vr,events,I, Imin, Imax,trange,dt,t_A):
         for t in np.arange(trange[0], trange[-1]):
             if (t == np.int(trise_flat[count])):
                 event_indices.append(count)
+                print(count)
+                print(t)
                 vr_offset[:, count] = vr_flat[np.int(trise_flat[count]) - t_A[0]:np.int(trise_flat[count] + t_A[1]), count]
                 I_offset[:, count] = I_flat[np.int(trise_flat[count]) - t_A[0]:np.int(trise_flat[count] + t_A[1]), count]
 
