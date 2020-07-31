@@ -69,9 +69,10 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
             return
 
     elif(WhatToDo=='2Probes'):
+        t_A_2P=[t_range_2P[0],nt-t_range_2P[1]]
         pin_distance=np.array((0.005, 0.005))
         inclination=0
-        velocity_error_1Probe, velocity_error_2Probe, velocity_error_direct, twindow, vr_CA, vr_2P, vr_CA_2P, events_2Probes,t_range, t_range_2P,t_index2P,distSecondProbe = Varying_dsToSecondProbe(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min,trange,dt, t_A,distSecondProbe,v)
+        velocity_error_1Probe, velocity_error_2Probe, velocity_error_direct, twindow, vr_CA, vr_2P, vr_CA_2P, events_2Probes,t_range, t_range_2P,t_index2P,distSecondProbe = Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min,trange,t_range,t_array,t_range_2P,dt, t_A,distSecondProbe,v,t_A_2P)
         if not detailed_return:
             return 
         else:
@@ -201,21 +202,22 @@ def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclinat
 
         
 
-def Varying_dsToSecondProbe(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min,trange,dt, t_A,distSecondProbe,v):
+def Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax, pin_distance, inclination, t_min,trange, t_range ,t_array,t_range_2P,dt, t_A,distSecondProbe,v,t_A_2P):
     trise, Epol,vr, events, inclinationAngle =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
     t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A)
 
     vr_2P=np.zeros(distSecondProbe.shape[0])
+    NrOfevents_2P=np.zeros(distSecondProbe.shape[0])
     events_2Probes=np.zeros(distSecondProbe.shape[0])
 
     nx = trise.shape[0]
     nz = trise.shape[1]
 
 
-    vr_CA_2P=np.zeros((t_A[1]+t_A[0],distSecondProbe.shape[0]))
+    vr_CA_2P=np.zeros((t_A_2P[1]+t_A_2P[0],distSecondProbe.shape[0]))
     t_e_2P=np.zeros(distSecondProbe.shape[0])
-    I_CA_2P=np.zeros((t_A[1]+t_A[0],distSecondProbe.shape[0]))
+    I_CA_2P=np.zeros((t_A_2P[1]+t_A_2P[0],distSecondProbe.shape[0]))
     t_e_2P=np.zeros(distSecondProbe.shape[0])
     for dd in range(distSecondProbe.shape[0]):
         dist_probeheads= int((distSecondProbe[dd] / Lx) * nx)
@@ -224,8 +226,9 @@ def Varying_dsToSecondProbe(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclinat
         vr_2P[dd], delta_t_measured, t_index2P, delta_t, events_2Probes[dd] = second_prob( t_array, Lx, trise, t_range, t_range_2P, distSecondProbe[dd])
         
         trise_2P=np.multiply(trise_2P_pre,t_index2P) 
-        t_e_2P[dd], vr_CA_2P[:,dd], I_CA_2P[:,dd], twindow_2P,event_indices_2P = average_messurments(trise_2P,Epol[:,dist_probeheads:,:],vr[:,dist_probeheads:,:],events[dist_probeheads:,:],I[:,dist_probeheads:,:],Imin, Imax,t_range_2P,dt, t_A)
-        
+        t_e_2P[dd], vr_CA_2P[:,dd], I_CA_2P[:,dd], twindow_2P,event_indices_2P = average_messurments(trise_2P,Epol[:,dist_probeheads:,:],vr[:,dist_probeheads:,:],events[dist_probeheads:,:],I[:,dist_probeheads:,:],Imin, Imax,t_range_2P,dt, t_A_2P)
+        NrOfevents_2P[dd]=len(event_indices_2P)
+
     v_in_t_range=v[t_range[0]:t_range[1]-1] 
     velocity_error_1Probe =np.abs(100* (np.max(v_in_t_range) - np.max(vr_CA)) / np.max(v_in_t_range))
     velocity_error_direct =np.abs(100* (np.max(v_in_t_range) - vr_2P) / np.max(v_in_t_range))
@@ -235,6 +238,7 @@ def Varying_dsToSecondProbe(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclinat
     np.savez(path+"/2Probe",velocity_error_1Probe=velocity_error_1Probe, velocity_error_2Probe=velocity_error_2Probe, velocity_error_direct=velocity_error_direct, twindow=twindow, vr_CA=vr_CA, vr_2P=vr_2P, vr_CA_2P=vr_CA_2P, events_2Probes=events_2Probes,t_range=t_range, t_range_2P= t_range_2P,t_index2P=t_index2P,distSecondProbe=distSecondProbe)
  
     print("Number of events 1. Probe: {} ".format(np.around(NrOfevents, decimals=2)))
+    print("Number of events 2. Probe: {} ".format(np.around(NrOfevents_2P, decimals=2)))
     print("Velocity measurement error 1 Probe: {}% ".format(np.around(velocity_error_1Probe, decimals=2)))
     print("Velocity measurement error 2 Probe: {}% ".format(np.around(velocity_error_2Probe, decimals=2)))
     print("Velocity measurement error direkt Probe: {}% ".format(np.around(velocity_error_direct, decimals=2)))
