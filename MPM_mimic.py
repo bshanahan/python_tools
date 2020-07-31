@@ -126,7 +126,7 @@ def I_sat(path, t_range,nt,n,Lx,Lz,I, phi, B0,Imin, Imax,pin_distance,inclinatio
 
         NrOfevents[ii]=len(event_indices)
         v_pol[ii] = (np.max(z[t_range[ii,0]:t_range[ii,1]-1]) - z[t_range[ii,0]]) / (dt * len(trange[:,ii]))
-        v_in_t_range[:,ii]=v[t_range[ii,0]:t_range[ii,1]-1]
+        v_in_t_range[:,ii]=v[t_range[ii,0]:t_range[ii,1]]
         
     delta_measured =np.multiply(t_e , v_pol)  
         
