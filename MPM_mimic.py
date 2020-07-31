@@ -6,7 +6,7 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 
-def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 150], detailed_return=False, t_min=50, t_range_2P=[100,300], Iteration=0):
+def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 150], detailed_return=False, t_min=50, t_range_2P=[100,300],  t_range_start=np.arange(100,400,25) ,t_range_end=np.arange(150,450,25),inclin=np.arange(-0.003,0.0031,0.0005),distance=np.arange(0.001,0.011,0.001),distSecondProbe=np.arange(0.001,0.011,0.001)):
     
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
@@ -43,10 +43,6 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
     v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None)
 
     if (WhatToDo=='Inclination'):
-        if (Iteration!=0):
-            inclin=Iteration
-        else:
-            inclin=np.arange(-0.003,0.0031,0.0005)
         pin_distance=np.array((0.005, 0.005))
         velocity_error_1Probe,twindow, vr_CA, inclin,inclinationAngle, v, t_range,t_e, NrOfevents =inclinationOfProbe(path,t_range,trange,dt,t_min,t_A,inclin, pin_distance,I, phi, B0, Lx, Lz, Imin, Imax,v,z,delta_real_mean)
         if not detailed_return:
@@ -55,10 +51,6 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
             return velocity_error_1Probe,twindow, vr_CA, inclin,inclinationAngle, v, t_range,t_e, NrOfevents
 
     elif(WhatToDo=='Pin_distance'):
-        if (Iteration!=0):
-            distance=Iteration
-        else:
-            distance=np.arange(0.001,0.011,0.001)
         inclination=0
         delta_measured,velocity_error_1Probe,blob_size_erro,NrOfevents,vr_CA,distance=pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclination,t_min,trange,t_range,dt, t_A,v,z,delta_real_mean)
         if not detailed_return:
@@ -66,21 +58,20 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
         else:
             return delta_measured,velocity_error_1Probe,blob_size_erro,NrOfevents,vr_CA,distance
     elif(WhatToDo=='I_sat'):
-        print('you still need to implement this')
+        pin_distance=np.array((0.005, 0.005))
+        inclination=0
+        t_range=np.array((t_range_start,t_range_end))
+        t_range=np.transpose(t_range)
+        I_sat(path, t_range,nt,n,Lx,Lz,I, phi, B0,Imin, Imax,pin_distance,inclination,t_min,dt,v,z )
         if not detailed_return:
             return 
         else:
             return
 
     elif(WhatToDo=='2Probes'):
-        if (Iteration!=0):
-            distSecondProbe=Iteration
-        else:
-            distSecondProbe=np.arange(0.001,0.011,0.001)
         pin_distance=np.array((0.005, 0.005))
         inclination=0
         velocity_error_1Probe, velocity_error_2Probe, velocity_error_direct, twindow, vr_CA, vr_2P, vr_CA_2P, events_2Probes,t_range, t_range_2P,t_index2P,distSecondProbe = Varying_dsToSecondProbe(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min,trange,dt, t_A,distSecondProbe,v)
-
         if not detailed_return:
             return 
         else:
@@ -94,8 +85,9 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
         t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A)
 
         v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
-        delta_measured = t_e * v_pol       
-        velocity_error_1Probe =np.abs(100* (np.max(v) - np.max(vr_CA)) / np.max(v))
+        delta_measured = t_e * v_pol   
+        v_in_t_range=v[t_range[0]:t_range[1]-1]
+        velocity_error_1Probe =np.abs(100* (np.max(v_in_t_range) - np.max(vr_CA)) / np.max(v_in_t_range))
         blob_size_error =np.abs( 100*( delta_real_mean-delta_measured) / delta_real_mean)
         NrOfevents=len(event_indices)
         print ("Number of events: {} ".format(np.around(NrOfevents, decimals=2)))
@@ -109,6 +101,48 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
 
 
 
+def I_sat(path, t_range,nt,n,Lx,Lz,I, phi, B0,Imin, Imax,pin_distance,inclination,t_min,dt,v,z ):
+
+    trise, Epol,vr, events, inclinationAngle =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+
+    t_A=np.transpose(np.array((t_range[:,0],nt-t_range[:,1])))
+    tsample_size = t_range[:,-1] - t_range[:,0]
+
+    delta_real_mean=np.zeros(t_range.shape[0])
+    trange=np.zeros((tsample_size[0],t_range.shape[0]),dtype='int')
+    NrOfevents=np.zeros(t_range.shape[0])
+    t_e=np.zeros(t_range.shape[0])
+    v_pol=np.zeros(t_range.shape[0])
+    vr_CA=np.zeros((t_A[0,0]+t_A[0,1],t_range.shape[0]))
+    I_CA=np.zeros((t_A[0,0]+t_A[0,1],t_range.shape[0]))
+    v_in_t_range=np.zeros((tsample_size[0],t_range.shape[0]))
+    
+    for ii in range(t_range.shape[0]):
+        trange[:,ii] = np.linspace(t_range[ii,0], t_range[ii,-1] - 1, tsample_size[ii], dtype='int')
+        delta_real_mean[ii]= real_size(n, trange[:,ii], tsample_size[ii], Lx, Lz)        
+
+        t_e[ii], vr_CA[:,ii], I_CA[:,ii], twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange[:,ii],dt, t_A[ii,:])
+
+        NrOfevents[ii]=len(event_indices)
+        v_pol[ii] = (np.max(z[t_range[ii,0]:t_range[ii,1]-1]) - z[t_range[ii,0]]) / (dt * len(trange[:,ii]))
+        v_in_t_range[:,ii]=v[t_range[ii,0]:t_range[ii,1]-1]
+        
+    delta_measured =np.multiply(t_e , v_pol)  
+        
+    velocity_error_1Probe =np.abs(100* (np.max(v_in_t_range,axis=0) - np.max(vr_CA,axis=0)) / np.max(v_in_t_range,axis=0))
+    blob_size_error =np.abs( 100*( delta_real_mean-delta_measured) / delta_real_mean)
+        
+    print ("Number of events: {} ".format(np.around(NrOfevents, decimals=2)))
+    print ("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
+    print ("Velocity measurement error: {}% ".format(np.around(velocity_error_1Probe, decimals=2)))
+   # np.savez(data+"/I_sat",
+    
+
+
+    return 
+
+
+        
 
 def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclination,t_min,trange,t_range,dt, t_A,v,z,delta_real_mean):
 
@@ -121,15 +155,16 @@ def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclinat
         t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A)
      
     v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
-    delta_measured = t_e * v_pol       
-    velocity_error_1Probe =np.abs(100* (np.max(v) - np.max(vr_CA,axis=0)) / np.max(v))
+    delta_measured = t_e * v_pol     
+    v_in_t_range=v[t_range[0]:t_range[1]-1]  
+    velocity_error_1Probe =np.abs(100* (np.max(v_in_t_range) - np.max(vr_CA,axis=0)) / np.max(v_in_t_range))
     blob_size_error =np.abs( 100*( delta_real_mean-delta_measured) / delta_real_mean)
     NrOfevents=len(event_indices)
     print ("Number of events: {} ".format(np.around(NrOfevents, decimals=2)))
     print ("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
     print ("Velocity measurement error: {}% ".format(np.around(velocity_error_1Probe, decimals=2)))
-
-    np.savez(path+"/pin_distance",delta_measured=delta_measured,velocity_error_1Probe=velocity_error_1Probe,blob_size_error =blob_size_error,NrOfevents=NrOfevents,vr_CA=vr_CA,distance=distance)
+    twindow*=1e6
+    np.savez(path+"/pin_distance",delta_measured=delta_measured,velocity_error_1Probe=velocity_error_1Probe,blob_size_error =blob_size_error,NrOfevents=NrOfevents,vr_CA=vr_CA,distance=distance,twindow=twindow)
 
     plt.rc('font', family='Serif')
     plt.figure(figsize=(8,4.5))
@@ -142,6 +177,24 @@ def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclinat
     plt.tight_layout()
     plt.legend(fancybox=True, loc='upper left', framealpha=0, fontsize=12)
     plt.savefig(path+'/pin_distance_error.png', dpi=300)
+    plt.show()
+
+
+    plt.rc('font', family='Serif')
+    plt.figure(figsize=(8,4.5))
+    plt.plot( twindow,vr_CA[:,4],'v', label=r'$\Delta s$ = '+ str(np.around(distance[4],decimals=1))+'mm')
+    plt.plot( twindow,vr_CA[:,9],'s', label=r'$\Delta s$  = '+ str(np.around(distance[9],decimals=1))+'mm')
+    plt.plot( twindow,vr_CA[:,1],'o', label=r'$\Delta s$  = '+ str(np.around(distance[1],decimals=1))+'mm')
+    plt.plot( twindow,np.full(twindow.shape,np.max(v_in_t_range)) ,'k--', label=r' Max Real velocity')    
+
+    plt.grid(alpha=0.5)
+    plt.xlim(-100, 100)
+    plt.xlabel(r't [$\mu s$]', fontsize=18)
+    plt.ylabel(r'$\mathrm{v}$ [m/s]', fontsize=18)
+    plt.tick_params('both', labelsize=14)
+    plt.tight_layout()
+    plt.legend(fancybox=True, loc='upper left', framealpha=0, fontsize=12)
+    plt.savefig(path+'/v_pin_distance.png', dpi=300)
     plt.show()
     
     return  delta_measured,velocity_error_1Probe,blob_size_error,NrOfevents,vr_CA,distance
@@ -173,10 +226,10 @@ def Varying_dsToSecondProbe(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclinat
         trise_2P=np.multiply(trise_2P_pre,t_index2P) 
         t_e_2P[dd], vr_CA_2P[:,dd], I_CA_2P[:,dd], twindow_2P,event_indices_2P = average_messurments(trise_2P,Epol[:,dist_probeheads:,:],vr[:,dist_probeheads:,:],events[dist_probeheads:,:],I[:,dist_probeheads:,:],Imin, Imax,t_range_2P,dt, t_A)
         
-
-    velocity_error_1Probe =np.abs(100* (np.max(v) - np.max(vr_CA)) / np.max(v))
-    velocity_error_direct =np.abs(100* (np.max(v) - vr_2P) / np.max(v))
-    velocity_error_2Probe =np.abs(100* (np.max(v) - np.max(vr_CA_2P,axis=0)) / np.max(v))
+    v_in_t_range=v[t_range[0]:t_range[1]-1] 
+    velocity_error_1Probe =np.abs(100* (np.max(v_in_t_range) - np.max(vr_CA)) / np.max(v_in_t_range))
+    velocity_error_direct =np.abs(100* (np.max(v_in_t_range) - vr_2P) / np.max(v_in_t_range))
+    velocity_error_2Probe =np.abs(100* (np.max(v_in_t_range) - np.max(vr_CA_2P,axis=0)) / np.max(v_in_t_range))
     NrOfevents=len(event_indices)
     
     np.savez(path+"/2Probe",velocity_error_1Probe=velocity_error_1Probe, velocity_error_2Probe=velocity_error_2Probe, velocity_error_direct=velocity_error_direct, twindow=twindow, vr_CA=vr_CA, vr_2P=vr_2P, vr_CA_2P=vr_CA_2P, events_2Probes=events_2Probes,t_range=t_range, t_range_2P= t_range_2P,t_index2P=t_index2P,distSecondProbe=distSecondProbe)
@@ -216,7 +269,8 @@ def inclinationOfProbe(path,t_range,trange,dt,t_min,t_A,inclin, pin_distance,I, 
 
     v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
     delta_measured = t_e * v_pol
-    velocity_error_1Probe = np.abs(100* (np.max(v) - np.max(vr_CA, axis=0)) / np.max(v))
+    v_in_t_range=v[t_range[0]:t_range[1]-1] 
+    velocity_error_1Probe = np.abs(100* (np.max(v_in_t_range) - np.max(vr_CA, axis=0)) / np.max(v_in_t_range))
     blob_size_error =np.abs( 100*( delta_real_mean-delta_measured) / delta_real_mean)
     NrOfevents=len(event_indices)
 
@@ -229,10 +283,10 @@ def inclinationOfProbe(path,t_range,trange,dt,t_min,t_A,inclin, pin_distance,I, 
 
     plt.rc('font', family='Serif')
     plt.figure(figsize=(8,4.5))
-    plt.plot( twindow,vr_CA[:,6],'v', label=r'Inclination = '+ str(inclin[6])+'mm')
-    plt.plot( twindow,vr_CA[:,8],'s', label=r'Inclination = '+ str(inclin[8])+'mm')
-    plt.plot( twindow,vr_CA[:,10],'o', label=r'Inclination = '+ str(inclin[10])+'mm')
-    plt.plot( twindow,v[t_range[0]-t_A[0]:t_range[0]+t_A[1]],'k--', label=r'Real velocity')
+    plt.plot( twindow,vr_CA[:,6],'v', label=r'Inclination = '+ str(inclinationAngle[6])+'rad')
+    plt.plot( twindow,vr_CA[:,8],'s', label=r'Inclination = '+ str(inclinationAngle[8])+'rad')
+    plt.plot( twindow,vr_CA[:,10],'o', label=r'Inclination = '+ str(inclinationAngle[10])+'rad')
+    plt.plot( twindow,np.full(twindow.shape,np.max(v_in_t_range)) ,'k--', label=r' Max Real velocity')
 
     plt.grid(alpha=0.5)
     plt.xlim(-100, 100)
