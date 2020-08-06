@@ -6,7 +6,7 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 
-def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 150], detailed_return=False, t_min=50, t_range_2P=[100,300],  t_range_start=np.arange(100,400,25) ,t_range_end=np.arange(150,450,25),inclin=np.arange(-0.003,0.0031,0.0005),distance=np.arange(0.001,0.011,0.001),distSecondProbe=np.arange(0.001,0.011,0.001)):
+def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 150], detailed_return=False, t_min=50, t_range_2P=[100,300],  t_range_start=np.arange(100,400,25) ,t_range_end=np.arange(150,450,25),inclin=np.arange(-0.003,0.0031,0.0005),distance=np.arange(0.001,0.011,0.001),distSecondProbe=np.arange(0.001,0.011,0.001),OneLine=False):
     
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
@@ -84,8 +84,16 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
         pin_distance=np.array((0.005, 0.005))
         inclination=0
         trise, Epol,vr, events, inclinationAngle,phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
-
-        t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A)
+        if (OneLine==True):
+            nz = I.shape[2]
+            z_pos=int((np.mean(z[t_range]) / Lz) * nz)
+            trise=trise[:,z_pos]
+            Epol=Epol[:,:,z_pos]
+            vr=vr[:,:,z_pos]
+            I=I[:,:,z_pos]
+            events=events[:,z_pos]
+            
+        t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A,OneLine)
         I_CA= I_CA-J0
 
         v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
@@ -129,7 +137,7 @@ def I_sat(path, t_range,nt,n,Lx,Lz,I, phi, B0,Imin, Imax,pin_distance,inclinatio
         trange[:,ii] = np.linspace(t_range[ii,0], t_range[ii,-1] - 1, tsample_size[ii], dtype='int')
         delta_real_mean[ii]= real_size(n, trange[:,ii], tsample_size[ii], Lx, Lz)        
 
-        t_e[ii], vr_CA[:,ii], I_CA[:,ii], twindow[:,ii],event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange[:,ii],dt, t_A[ii,:])
+        t_e[ii], vr_CA[:,ii], I_CA[:,ii], twindow[:,ii],event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange[:,ii],dt, t_A[ii,:],OneLine)
     	#Index_I=np.argmax(I_CA>Imin + 0.368 * (Imax - Imin)) 
 
         NrOfevents[ii]=len(event_indices)
@@ -195,7 +203,7 @@ def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclinat
         pin_distance=[distance[ii],distance[ii]]
         trise, Epol,vr, events, inclinationAngle,phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
-        t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A)
+        t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A,OneLine)
     
     I_CA= I_CA-J0 
     v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
@@ -251,7 +259,7 @@ def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclinat
 def Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax, pin_distance, inclination, t_min,trange, t_range ,t_array,t_range_2P,dt, t_A,distSecondProbe,v,t_A_2P,J0,delta_real_mean):
     trise, Epol,vr, events, inclinationAngle,phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
-    t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A)
+    t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A,OneLine)
     I_CA= I_CA-J0
     vr_2P=np.zeros(distSecondProbe.shape[0])
     NrOfevents_2P=np.zeros(distSecondProbe.shape[0])
@@ -272,7 +280,7 @@ def Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax, pin_distance, i
         vr_2P[dd], delta_t_measured, t_index2P, delta_t, events_2Probes[dd] = second_prob( t_array, Lx, trise, t_range, t_range_2P, distSecondProbe[dd])
         
         trise_2P=np.multiply(trise_2P_pre,t_index2P) 
-        t_e_2P[dd], vr_CA_2P[:,dd], I_CA_2P[:,dd], twindow_2P,event_indices_2P = average_messurments(trise_2P,Epol[:,dist_probeheads:,:],vr[:,dist_probeheads:,:],events[dist_probeheads:,:],I[:,dist_probeheads:,:],Imin, Imax,t_range_2P,dt, t_A_2P)
+        t_e_2P[dd], vr_CA_2P[:,dd], I_CA_2P[:,dd], twindow_2P,event_indices_2P = average_messurments(trise_2P,Epol[:,dist_probeheads:,:],vr[:,dist_probeheads:,:],events[dist_probeheads:,:],I[:,dist_probeheads:,:],Imin, Imax,t_range_2P,dt, t_A_2P,OneLine)
         NrOfevents_2P[dd]=len(event_indices_2P)
 
     I_CA_2P= I_CA_2P/J0
@@ -317,7 +325,7 @@ def inclinationOfProbe(path,t_range,trange,dt,t_min,t_A,inclin, pin_distance,I, 
     for ii in range(inclin.shape[0]):
         trise, Epol,vr, events,inclinationAngle[ii],phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclin[ii],t_min)
 
-        t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt,t_A)
+        t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt,t_A,OneLine)
 
     I_CA= I_CA-J0
     v_pol = (np.max(z[t_range[0]:t_range[1]-1]) - z[t_range[0]]) / (dt * len(trange))
@@ -508,11 +516,14 @@ def geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t
     return trise, Epol,vr, events,inclinationAngle, phi_distance
 
 
-def average_messurments(trise,Epol,vr,events,I, Imin, Imax,trange,dt,t_A):
+def average_messurments(trise,Epol,vr,events,I, Imin, Imax,trange,dt,t_A,OneLine):
 
     nt = I.shape[0]
     nx = I.shape[1]
-    nz = I.shape[2]
+    if (OneLine==True):
+        nz=1
+    else:
+        nz = I.shape[2]
     
     trise_flat = trise.flatten()
     events_flat = events.flatten()
