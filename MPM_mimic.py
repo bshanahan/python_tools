@@ -17,8 +17,8 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
     WhatToDo:                  which measurement should be done.  options:'Inclination','Pin_distance','I_sat','2Probes'
     t_range:                   time range for measurements (index)
     detailed_return (bool):    whether or not extra information is returned.
-    t_min:                     minimun time start of measurement and simulations t=0
-    t_range:                   time range for measurements (index) with the 2. Probe
+    t_min:                     minimun time to pass befor  start of measurement
+    t_range_2P:                time range for measurements (index) with the 2. Probe
     t_range_start,t_range_end: beginn / end of different time ranges for I_sat. 
                                     Used if WhatToDo=='I_sat'
     inclin:                    inclination of probe head to magnetic surfaces.
@@ -59,6 +59,8 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
     delta_real_mean, Rsize_mean, Zsize_mean, blob_deformation= real_size(n, trange, tsample_size, Lx, Lz)
 
     v, pos_fit, pos, r, z, t = calc_com_velocity(path=path, fname=None)
+
+    ###Selecting What to do ###
 
     if (WhatToDo=='Inclination'):
         ### default pin distance of 5 mm ###
@@ -108,7 +110,8 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
        # t_A=[50,150]
         pin_distance=np.array((0.005, 0.005))
         inclination=0
-        trise, Epol,vr, events, inclinationAngle,phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+        trise, Epol,vr, events, inclinationAngle,d_Potential_mean =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+        # only one line is used 
         if (OneLine==True):
             nz = I.shape[2]
             z_pos=int((np.mean(z[t_range]) / Lz) * nz)
@@ -127,7 +130,7 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
         velocity_error_1Probe =np.abs(100* (np.max(v_in_t_range) - np.max(vr_CA)) / np.max(v_in_t_range))
         blob_size_error =np.abs( 100*( delta_real_mean-delta_measured) / delta_real_mean)
         NrOfevents=len(event_indices)
-        mean_phi_dist=np.mean(phi_distance[t_range[0]:t_range[1]-1])
+        mean_phi_dist=np.mean(d_Potential_mean[t_range[0]:t_range[1]-1])
         print ("Number of events: {} ".format(np.around(NrOfevents, decimals=2)))
         print ("Real Blob size in mm: {} ".format(np.around(delta_real_mean*1e3, decimals=2)))
         print ("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
@@ -144,7 +147,8 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
 def I_sat(path, t_range,nt,n,Lx,Lz,I, phi, B0,Imin, Imax,pin_distance,inclination,t_min,dt,v,z,t_array,J0,OneLine):
 
     """
-   
+    
+       
     input:
 
     return:
@@ -152,7 +156,7 @@ def I_sat(path, t_range,nt,n,Lx,Lz,I, phi, B0,Imin, Imax,pin_distance,inclinatio
     """
 
     
-    trise, Epol,vr, events, inclinationAngle,phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+    trise, Epol,vr, events, inclinationAngle,d_Potential_mean =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
     t_A=np.transpose(np.array((t_range[:,0],nt-t_range[:,1])))
     tsample_size = t_range[:,-1] - t_range[:,0]
@@ -232,7 +236,7 @@ def I_sat(path, t_range,nt,n,Lx,Lz,I, phi, B0,Imin, Imax,pin_distance,inclinatio
 def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclination,t_min,trange,t_range,dt, t_A,v,z,delta_real_mean,J0,OneLine):
     
     """
-   
+    calculates vr_CA and the velocity error for different pin distances and plots a graphs
     input:
 
     return:
@@ -242,7 +246,7 @@ def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclinat
     vr_CA=np.zeros((t_A[1]+t_A[0],distance.shape[0]))
     for ii in range(distance.shape[0]):
         pin_distance=[distance[ii],distance[ii]]
-        trise, Epol,vr, events, inclinationAngle,phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+        trise, Epol,vr, events, inclinationAngle,d_Potential_mean =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
         t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A,OneLine)
     
@@ -253,7 +257,7 @@ def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclinat
     velocity_error_1Probe =np.abs(100* (np.max(v_in_t_range) - np.max(vr_CA,axis=0)) / np.max(v_in_t_range))
     blob_size_error =np.abs( 100*( delta_real_mean-delta_measured) / delta_real_mean)
     NrOfevents=len(event_indices)
-    mean_phi_dist=np.mean(phi_distance[t_range[0]:t_range[1]-1])
+    mean_phi_dist=np.mean(d_Potential_mean[t_range[0]:t_range[1]-1])
     print ("Number of events: {} ".format(np.around(NrOfevents, decimals=2)))
     print ("Real Blob size in mm: {} ".format(np.around(delta_real_mean*1e3, decimals=2)))
     print ("Size measurement error: {}% ".format(np.around(blob_size_error, decimals=2)))
@@ -300,14 +304,14 @@ def pin_distance_variation(path,distance,I, phi, B0, Lx, Lz, Imin, Imax,inclinat
 def Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax, pin_distance, inclination, t_min,trange, t_range ,t_array,t_range_2P,dt, t_A,distSecondProbe_x,distSecondProbe_z,v,t_A_2P,J0,delta_real_mean,z,OneLine):
 
     """
-   
+    finding the velocity error for different vertical offsets
     input:
 
     return:
 
     """
     
-    trise, Epol,vr, events, inclinationAngle,phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
+    trise, Epol,vr, events, inclinationAngle,d_Potential_mean =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t_min)
 
     t_e, vr_CA, I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt, t_A,OneLine)
     I_CA= I_CA-J0
@@ -348,7 +352,7 @@ def Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax, pin_distance, i
     blob_size_error_1P =np.abs( 100*( delta_real_mean-delta_measured_1P) / delta_real_mean)
 
     NrOfevents=len(event_indices)
-    mean_phi_dist=np.mean(phi_distance[t_range[0]:t_range[1]-1])
+    mean_phi_dist=np.mean(d_Potential_mean[t_range[0]:t_range[1]-1])
     np.savez(path+"/2Probe",velocity_error_1Probe=velocity_error_1Probe, velocity_error_2Probe=velocity_error_2Probe, velocity_error_direct=velocity_error_direct, twindow=twindow, vr_CA=vr_CA, vr_2P=vr_2P, vr_CA_2P=vr_CA_2P, events_2Probes=events_2Probes,t_range=t_range, t_range_2P= t_range_2P,t_index2P=t_index2P,distSecondProbe_x=distSecondProbe_x, distSecondProbe_z=distSecondProbe_z)
  
     print("Number of events 1. Probe: {} ".format(np.around(NrOfevents, decimals=2)))
@@ -367,7 +371,7 @@ def Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax, pin_distance, i
     plt.plot( distSecondProbe_z*1e3,velocity_error_direct,'s', label=r'Velocity Error time difference')
 
     plt.grid(alpha=0.5)
-    plt.xlabel(r'distance between Probes [mm]', fontsize=18)
+    plt.xlabel(r'vertical offset [mm]', fontsize=18)
     plt.ylabel(r'Velocity error [$\%$]', fontsize=18)
     plt.tick_params('both', labelsize=14)
     plt.tight_layout()
@@ -380,7 +384,7 @@ def Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax, pin_distance, i
     plt.plot( distSecondProbe_z*1e3,v_pol_error,'s', label=r'Poloidal velocity error')
 
     plt.grid(alpha=0.5)
-    plt.xlabel(r'distance between Probes [mm]', fontsize=18)
+    plt.xlabel(r'vertical offset [mm]', fontsize=18)
     plt.ylabel(r'Velocity error [$\%$]', fontsize=18)
     plt.tick_params('both', labelsize=14)
     plt.tight_layout()
@@ -405,7 +409,7 @@ def inclinationOfProbe(path,t_range,trange,dt,t_min,t_A,inclin, pin_distance,I, 
     vr_CA=np.zeros((t_A[1]+t_A[0],inclin.shape[0]))
     inclinationAngle=np.zeros(inclin.shape[0])
     for ii in range(inclin.shape[0]):
-        trise, Epol,vr, events,inclinationAngle[ii],phi_distance =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclin[ii],t_min)
+        trise, Epol,vr, events,inclinationAngle[ii],d_Potential_mean =geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclin[ii],t_min)
 
         t_e, vr_CA[:,ii], I_CA, twindow,event_indices = average_messurments(trise,Epol,vr,events,I,Imin, Imax,trange,dt,t_A,OneLine)
 
@@ -517,11 +521,26 @@ def loading_data(path):
 def second_prob(t_array,Lx,Lz,trise, t_range, t_range_2P, dist_probeheads_z,dist_probeheads_x,distSecondProbe_x, distSecondProbe_z):
     """
     a second Probe is used to determine the radial velocity
-    
+    finding events at the 2. Probe under the condition that at the 1. probe the threshold has been surpassed
    
     input:
+    t_array:
+    Lx,Lz:
+    trise: time of event at position x,z
+    t_range:           time range for measurements (index)
+    t_range_2P:        time range for measurements (index) with the 2. Probe
+    dist_probeheads_z: index vertical offset 2. Probe 
+    dist_probeheads_x: index horizontal offset 2. Probe
+    distSecondProbe_x: vertical offset 2. Probe in m
+    distSecondProbe_z: horizontal offset 2. Probe in m
 
     return:
+    vr_2Probs:        radial velocity calculated from delta t and horizontal offset
+    v_pol_2Probs:     poloidal velocity calculated from delta t and vertical offset
+    delta_t_measured: time between event at 1. and 2. Probe
+    twindow:           
+    delta_t:          
+    events_2Probes:   Number of events at the 2. Probe
 
     """
     
@@ -592,9 +611,22 @@ def geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t
     finding the grid point at witch I_sat surpasses the threshold for the first time
     
     input:
+    I:            Ion saturation current density
+    phi           Potential
+    B0            Magnetic field
+    Lx/ Lz
+    Imin/ Imax:   maximum /minimum I_sat at t=0 
+    pin_distance: distance between pins:center pin and upper/lower pin
+    inclination:  inclination of probe head to magnetic surfaces
+    t_min         minimun time to pass befor  start of measurement
 
     return:
-
+    trise:
+    Epol:
+    vr:
+    events:
+    inclinationAngle: Angle between outside Probe and poloidal direction
+    d_Potential_mean:      distance between max / min of Potential
     """
     
     nt = I.shape[0]
@@ -630,15 +662,15 @@ def geting_messurments(I, phi, B0, Lx, Lz, Imin, Imax,pin_distance,inclination,t
         index_min_z=index_min[1]
         index_min_z=index_min_z[0]
         phi_distance[tt]=index_max_z-index_min_z
-    phi_distance=(phi_distance/nz)*Lz
+    d_Potential_mean=(phi_distance/nz)*Lz
 
-    return trise, Epol,vr, events,inclinationAngle, phi_distance
+    return trise, Epol,vr, events,inclinationAngle,d_Potential_mean
 
 
 def average_messurments(trise,Epol,vr,events,I, Imin, Imax,trange,dt,t_A,OneLine):
 
     """
-   
+    the measured velocity and I_sat are selected in the time range of the measurements 
     input:
 
     return:
