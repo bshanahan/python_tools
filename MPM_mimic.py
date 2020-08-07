@@ -155,7 +155,7 @@ def synthetic_probe(path='./blob_Hydrogen', WhatToDo='default', t_range=[100, 15
 def I_sat(path, t_range,nt,n,Lx,Lz,I, phi, B0,Imin, Imax,pin_distance,inclination,t_min,dt,v,z,t_array,J0,OneLine):
 
     """
-    
+    calculating I_sat for different time range for the  measurement
        
     input:
 
@@ -325,6 +325,7 @@ def Varying_dsToSecondProbe(path,I, phi, B0, Lx, Lz, Imin, Imax, pin_distance, i
 def inclinationOfProbe(path,t_range,trange,dt,t_min,t_A,inclin, pin_distance,I, phi, B0, Lx, Lz, Imin, Imax,v,z,delta_real_mean,J0,OneLine):
 
     """
+    findes the velocity error for different inclinations of the outer probes
    
     input:
 
