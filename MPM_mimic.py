@@ -5,15 +5,16 @@ from boututils import calculus as calc
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
-def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50):
+def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50, pin_sep=5e-3, inclination=0., top_pin_R_offset=0., top_pin_Z_offset=0.):
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
 
     input: 
-    path to BOUT++ dmp files 
-    time range for measurements (index)
+    path:  to BOUT++ dmp files 
+    t_range: time range for measurements (index)
     detailed_return (bool) -- whether or not extra information is returned.
-    t_min = minimum time index for valid measurement
+    t_min: minimum time index for valid measurement
+    pin_sep: vertical separation of V_fl pins to I_sat pin.
 
     returns: 
     delta_measured -- measured blob size
@@ -27,6 +28,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     events -- locations of measurements
     """
     n  = collect("Ne", path=path, info=False)
+    Pe = collect("Pe", path=path, info=False)
     n0 = collect("Nnorm", path=path, info=False)
     T0 = collect("Tnorm", path=path, info=False)
     phi = collect("phi",path=path, info=False)*T0
@@ -50,7 +52,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     nx = n.shape[1]
     ny = n.shape[2]
     nz = n.shape[3]
-    probe_offset = int((0.005/Lz)*nz)
+    probe_offset = int((pin_sep/Lz)*nz)
 
     Epol = np.zeros((nt,nx,nz))
     vr = np.zeros((nt,nx,nz))
@@ -58,9 +60,13 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     trise = np.zeros((nx,nz))
 
     n = n[:,:,0,:]
+    Pe = Pe[:,:,0,:]
+    
+    Isat = get_Isat(n*n0,Pe*n0*T0, path=path)
 
     nmax,nmin = np.amax((n[0,:,:])),np.amin((n[0,:,:]))
 
+    # Get measured rise time, calculated radial velocity
     for k in np.arange(0,nz):
         for i in np.arange(0,nx):
             if(np.any(n[t_min:,i,k] >  nmin+0.368*(nmax-nmin))):
@@ -78,6 +84,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     vr_offset = np.zeros((150,nx*nz))
     n_offset = np.zeros((150,nx*nz))
     event_indices = []
+    # get measured velocity and density with same t==0, for CA.
     for count in np.arange(0,nx*nz):
         for t in np.arange(trange[0],trange[-1]):
             if (t==np.int(trise_flat[count])):
@@ -85,6 +92,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
                 vr_offset[:,count] = vr_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
                 n_offset[:,count] = n_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
 
+    # Conditionally average.
     vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
     n_CA = np.mean(n_offset[:,event_indices], axis=-1)
     twindow = np.linspace(-50*dt, 100*dt, dt)
@@ -93,10 +101,13 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     tmin, tmax = np.min(twindow[n_CA > nmin+0.368*(nmax-nmin)]), np.max(twindow[n_CA > nmin+0.368*(nmax-nmin)])
     t_e = tmax-tmin
 
-    v,pos_fit,pos,r,z,t = calc_com_velocity(path=path,fname=None,tmax=trange[-1])
+    ## get real velocity.
+    v,pos_fit,pos,r,z,t = calc_com_velocity(path=path,fname=None,tmax=-1)
 
-    ## this next line could be more elegant...
+    ## The next line calculates the measured size, and could be more elegant...
     delta_measured = t_e*(np.max(z)-z[0])/(dt*len(trange))
+
+    ## calculate the actual size of the filament -- averaged over R/Z.
     n_real = n[trange,:,:]
     n_real_max = np.zeros((tsample_size))
     n_real_min = np.zeros((tsample_size))
@@ -120,12 +131,26 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50)
     print ("Velocity measurement error: {}% ".format(np.around(100*np.max(vr_CA)/np.max(v[trange]),decimals=2)))
 
     if not detailed_return:
-        return  delta_measured, delta_real_mean, vr_CA, v
+        return  delta_measured, delta_real_mean, vr_CA, v, Isat
     else:
-        return  delta_measured, delta_real_mean, vr_CA, v, n_CA*n0, len(event_indices), t_e, events
+        return  delta_measured, delta_real_mean, vr_CA, v, n_CA*n0, len(event_indices), t_e, trise
 
+def get_Isat(n, Pe, path='.'):
+    qe = 1.602176634e-19
+    m_i = 1.672621898e-27
 
-def calc_com_velocity(path = "." ,fname="rot_ell.curv.68.16.128.Ic_02.nc", tmax=-1, track_peak=False):
+    Te = np.divide(Pe, n)
+
+    Isat = n * 0.49 * qe * np.sqrt((qe * Te) / (m_i)) * 1e-3
+
+    T0 = collect('Tnorm', path=path, info=False) 
+    n0 = collect('Nnorm', path=path, info=False)
+   
+    J0 = n0 * 0.49 * qe * np.sqrt((qe * T0) / (m_i)) * 1e-3
+
+    return Isat-J0
+
+def calc_com_velocity(path = "." ,fname=None, tmax=-1, track_peak=False):
 
     n  = collect("Ne", path=path, tind=[0,tmax], info=False)
     t_array = collect("t_array", path=path, tind=[0,tmax], info=False)
