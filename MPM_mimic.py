@@ -53,7 +53,8 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     ny = n.shape[2]
     nz = n.shape[3]
     probe_offset_z = int((pin_sep/Lz)*nz)
-    probe_offset_r = int(((np.tan(inclination)*pin_sep)/Lx)*nx)
+    pin_sep_r = pin_sep*np.tan(inclination)
+    probe_offset_r = int(((pin_sep_r)/Lx)*nx)
 
     Epol = np.zeros((nt,nx,nz))
     vr = np.zeros((nt,nx,nz))
@@ -74,7 +75,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
             if(np.any(n[t_min:,i,k] >  nmin+0.368*(nmax-nmin))):
                 trise[i,k] = int(np.argmax(Isat[t_min:,i,k] > Imin+0.368*(Imax-Imin))+t_min)
                 events[i,k] = 1
-                Epol[:,i,k] = (phi[:,(i+probe_offset_r)%(nx-1),0, (k+probe_offset_z)%(nz-1)] -  phi[:,(i+probe_offset_r)%(nx-1),0, (k-probe_offset_z)%(nz-1)])/(2*pin_sep)
+                Epol[:,i,k] = (phi[:,(i+probe_offset_r)%(nx-1),0, (k+probe_offset_z)%(nz-1)] -  phi[:,(i+probe_offset_r)%(nx-1),0, (k-probe_offset_z)%(nz-1)])/(2*np.sqrt(pin_sep**2 + pin_sep_r**2))
                 vr[:,i,k] = Epol[:,i,k] / B0
 
     trise_flat = trise.flatten()
