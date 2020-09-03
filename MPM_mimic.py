@@ -5,7 +5,30 @@ from boututils import calculus as calc
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
-def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50, pin_sep=5e-3, inclination=0., top_pin_R_offset=0., top_pin_Z_offset=0.):
+def vary_inclination(path='.', t_range=[100,150], thetas=np.linspace(-0.5,0.5,20), show_plot=True, save_plot=False, fname='inclination.png'):
+    sigma_d = np.zeros(thetas.shape)
+    sigma_v = np.zeros(thetas.shape)
+    for i,theta in zip(np.arange(0,thetas.shape[0]),thetas):
+        d_m, d_s, vr_CA, v, I, sigma_d[i], sigma_v[i] = synthetic_probe(path=path, t_range=t_range, inclination=theta, return_error = True)
+
+    if show_plot:
+        plt.rc('font', family='Serif')
+        plt.figure(figsize=(8,4.5))
+        plt.plot(thetas, sigma_v, 'o')
+        plt.grid(alpha=0.5)
+        plt.xlabel(r'Inclination angle [rad]', fontsize=18)
+        plt.ylabel(r'Error [%]', fontsize=18)
+        plt.tick_params('both', labelsize=14)
+        plt.tight_layout()
+        if save_plot:
+            plt.savefig(str(fname), dpi=300)
+        else:
+            plt.show()
+    else:
+        return sigma_v
+    
+
+def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_error=False, t_min=50, pin_sep=5e-3, inclination=0., quiet=True):
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
 
@@ -15,17 +38,21 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     detailed_return (bool) -- whether or not extra information is returned.
     t_min: minimum time index for valid measurement
     pin_sep: vertical separation of V_fl pins to I_sat pin.
-    I_CA -- conditionally-averaged Ion saturation current
+    inclination: misalignment of the probe wrt. poloidal motion. 
 
     returns: 
     delta_measured -- measured blob size
     delta_real_mean -- real blob size
     vr_CA -- radial velocity (conditionally averaged)
     v -- COM velocity
+    I_CA -- conditionally-averaged Ion saturation current
+
     optionally returns: 
     len(event_indices) -- number of events measured
     t_e -- time-width of I_sat peak
     events -- locations of measurements
+    size_error -- error in size measurement
+    velocity_error -- error in velocity measurement
     """
     n  = collect("Ne", path=path, info=False)
     Pe = collect("Pe", path=path, info=False)
@@ -98,7 +125,6 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
     # Conditionally average.
     vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
     I_CA = np.mean(Isat_offset[:,event_indices], axis=-1)
-    twindow = np.linspace(-50*dt, 100*dt, dt)
     I_CA_max,I_CA_min = np.amax(I_CA),np.amin(I_CA)
     twindow = np.linspace(-50*dt, 100*dt, 150)
     tmin, tmax = np.min(twindow[I_CA > Imin+0.368*(Imax-Imin)]), np.max(twindow[I_CA > Imin+0.368*(Imax-Imin)])
@@ -128,16 +154,25 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, t_min=50,
         Zsize[tind] = np.max(ZZ[np.nonzero(n_real[tind])]) - np.min(ZZ[np.nonzero(n_real[tind])])
         delta_real[tind] = np.mean([Rsize[tind],Zsize[tind]])
 
-    delta_real_mean = np.mean(delta_real)
+    delta_real_mean = np.mean(Zsize)
+    size_error = np.around(100*np.abs(delta_measured-delta_real_mean)/delta_real_mean,decimals=2)
+    velocity_error = np.around(100*np.abs(np.max(vr_CA)-np.max(v[trange]))/np.max(v[trange]),decimals=2)
 
-    print ("Number of events: {} ".format(np.around(len(event_indices),decimals=2)))
-    print ("Size measurement error: {}% ".format(np.around(100*delta_measured/delta_real_mean,decimals=2)))
-    print ("Velocity measurement error: {}% ".format(np.around(100*np.max(vr_CA)/np.max(v[trange]),decimals=2)))
+    if not quiet:
+        print ("Number of events: {} ".format(np.around(len(event_indices),decimals=2)))
+        print ("Size measurement error: {}% ".format(size_error))
+        print ("Velocity measurement error: {}% ".format(velocity_error))
 
     if not detailed_return:
-        return  delta_measured, delta_real_mean, vr_CA, v, I_CA
+        if return_error:
+            return  delta_measured, delta_real_mean, vr_CA, v, I_CA , size_error, velocity_error 
+        else:
+            return  delta_measured, delta_real_mean, vr_CA, v, I_CA
     else:
-        return  delta_measured, delta_real_mean, vr_CA, v, I_CA, len(event_indices), t_e, trise
+        if return_error:
+            return  delta_measured, delta_real_mean, vr_CA, v, I_CA, size_error, velocity_error, len(event_indices), t_e, trise
+        else:
+            return  delta_measured, delta_real_mean, vr_CA, v, I_CA, len(event_indices), t_e, trise
 
 def get_Isat(n, Pe, path='.'):
     qe = 1.602176634e-19
@@ -256,7 +291,7 @@ def calc_com_velocity(path = "." ,fname=None, tmax=-1, track_peak=False):
         pos_index = np.sort(pos_index)
         XX = np.vstack(( t_array[:]**5, t_array[:]**4,t_array[:]**3,t_array[:]**2,t_array[:], pos[pos_index[0],y]*np.ones_like(t_array[:]))).T
 
-        pos_fit_no_offset = np.linalg.lstsq(XX[pos_index,:-2],pos[pos_index,y])[0]
+        pos_fit_no_offset = np.linalg.lstsq(XX[pos_index,:-2],pos[pos_index,y],rcond=None)[0]
         pos_fit[:,y] = np.dot(pos_fit_no_offset,XX[:,:-2].T)
         v_fit[:,y] = calc.deriv(pos_fit[:,y])/dt
 
