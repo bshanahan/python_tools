@@ -5,12 +5,31 @@ import boututils.calculus as calc
 import matplotlib.pyplot as plt
 import random
 
-def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True,rectangular=False, fname='rotating-ellipse.fci.nc', a=0.4, curvilinear_inner_aligned=True, curvilinear_outer_aligned=True, npoints=421, Btor=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False):
-    yperiod = 2*np.pi/5.
-    field = zb.field.RotatingEllipse(xcentre = xcentre, I_coil=I_coil, radius = 2*a, yperiod = yperiod)
-    # Define the y locations
+def screwpinch(nx=68,ny=16,nz=128, xcentre=1.5, fname='screwpinch.fci.nc', a=0.2, npoints=421, show_maps=False):
+    yperiod = 2*np.pi
+    field = zb.field.Screwpinch(xcentre = xcentre, yperiod = yperiod, shear=0*2e-1)
     ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
     start_r = xcentre+a/2.
+    start_z = 0.
+    print ("Making curvilinear poloidal grid")
+    inner = zb.rzline.shaped_line(R0=xcentre, a=a/2., elong=0, triang=0.0, indent=0, n=npoints)
+    outer = zb.rzline.shaped_line(R0=xcentre, a=a, elong=0, triang=0.0, indent=0, n=npoints)
+    poloidal_grid = zb .poloidal_grid.grid_elliptic(inner, outer,
+                                                   nx, nz)
+    grid = zb.grid.Grid(poloidal_grid, ycoords, yperiod, yperiodic=True)
+    maps =  zb.make_maps(grid, field)
+    zb.write_maps(grid,field,maps,str(fname),metric2d=False)
+    calc_curvilinear_curvature(fname, field, grid, maps)
+
+    if show_maps:
+        zb.plot.plot_forward_map(grid, maps, yslice=0)
+        
+def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True,rectangular=False, fname='rotating-ellipse.fci.nc', a=0.4, curvilinear_inner_aligned=True, curvilinear_outer_aligned=True, npoints=421, Btor=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False):
+    yperiod = 2*np.pi
+    field = zb.field.RotatingEllipse(xcentre = xcentre, I_coil=I_coil, radius = 4*a, yperiod = yperiod)
+    # Define the y locations
+    ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
+    start_r = xcentre+a/1.5
     start_z = 0.
 
     if rectangular:
@@ -18,7 +37,7 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
         poloidal_grid = zb.poloidal_grid.RectangularPoloidalGrid(nx, nz, 1.0, 1.0, Rcentre=xcentre)
     elif curvilinear:
         print ("Making curvilinear poloidal grid")
-        inner = zb.rzline.shaped_line(R0=xcentre, a=a/2., elong=0, triang=0.0, indent=0, n=npoints)
+        inner = zb.rzline.shaped_line(R0=xcentre, a=a/1.5, elong=0, triang=0.0, indent=0, n=npoints)
         outer = zb.rzline.shaped_line(R0=xcentre, a=a, elong=0, triang=0.0, indent=0, n=npoints)
 
         if curvilinear_inner_aligned:
@@ -31,9 +50,9 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
         print ("creating grid...")
         if curvilinear_inner_aligned:
             if curvilinear_outer_aligned:
-                poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz, show=show_maps) for inner, outer in zip(inner_lines, outer_lines) ]
+                poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz) for inner, outer in zip(inner_lines, outer_lines) ]
             else:
-                poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz, show=show_maps) for inner in inner_lines ]
+                poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz) for inner in inner_lines ]
         else:
             poloidal_grid = zb.poloidal_grid.grid_elliptic(inner, outer,
                                               nx, nz)
@@ -50,54 +69,67 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
     if (calc_curvature and smooth_curvature):
         smooth_metric(fname, write_to_file=True, return_values=False, smooth_metric=True)
 
-def W7X(nx=68,ny=16,nz=256,fname='W7-X.fci.nc', VMEC=True, vmec_file='w7-x.wout.nc', inner_VMEC=True, inner_vacuum=False, outer_VMEC=True, outer_vacuum=False, outer_vessel=False, npoints=100, a=0.5, show_maps=False, calc_curvature=True, smooth_curvature=False, configuration=0):
-    field = zb.field.W7X(phimax=2*np.pi/5.)
+    # if show_maps:
+    #     plot_maps(field, grid, maps, yslice=0)
+
+def W7X(nx=68,ny=32,nz=256,fname='W7-X.fci.nc', vmec_file='w7-x.wout.nc', inner_VMEC=False, inner_vacuum=False, outer_VMEC=False, outer_vacuum=False, outer_vessel=False, npoints=100, a=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False, plasma_field=False, configuration=0, vmec_url='http://svvmec1.ipp-hgw.mpg.de:8080/vmecrest/v1/w7x_ref_171/wout.nc'):
+
     yperiod = 2*np.pi/5.
     ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
-    xcentre, zcentre = field.magnetic_axis(phi_axis=ycoords[0],configuration=configuration)
-    start_r = xcentre+a/2.
-    start_z = zcentre
-    
-    print ("Making curvilinear poloidal grid")
-    inner = zb.rzline.shaped_line(R0=xcentre, a=a/2., elong=0, triang=0.0, indent=0, n=npoints)
-    outer = zb.rzline.shaped_line(R0=xcentre, a=a, elong=0, triang=0.0, indent=0, n=npoints)
-     
-    if inner_vacuum:
-        print ("Aligning to inner vacuum flux surface...")
-        inner_lines = get_lines(field, start_r, start_z, ycoords, yperiod=yperiod, npoints=npoints)
-    elif inner_VMEC:
-        print ("Aligning to inner VMEC flux surface...")
-        inner_lines = get_VMEC_surfaces(phi=ycoords,s=0.5,npoints=nz)
-    if outer_vacuum:
-        print ("Aligning to outer vacuum flux surface...")
-        outer_lines = get_lines(field, start_r+a, start_z, ycoords, yperiod=yperiod, npoints=npoints)
-    elif outer_VMEC:
+    if outer_VMEC:
         print ("Aligning to outer VMEC flux surface...")
-        outer_lines = get_VMEC_surfaces(phi=ycoords,s=1,npoints=nz)
+        outer_lines = get_VMEC_surfaces(phi=ycoords,s=1,npoints=nz, w7x_run=vmec_url)
     elif outer_vessel:
         print ("Aligning to plasma vessel (EXPERIMENTAL) ...")
         outer_lines = get_W7X_vessel(phi=ycoords, nz=nz)
-        
+    elif (outer_vacuum or inner_vacuum):
+        xmin = 4.05
+        xmax = 4.05+2.5
+        zmin = -1.35
+        zmax = -zmin
+        field = zb.field.W7X_vacuum(phimax=2*np.pi/5., x_range=[xmin,xmax], z_range=[zmin,zmax], include_plasma_field=plasma_field)
+        xcentre, zcentre = field.magnetic_axis(phi_axis=ycoords[0],configuration=configuration)
+        start_r = xcentre+a/2.
+        start_z = zcentre
+        if inner_vacuum:
+            print ("Aligning to inner vacuum flux surface...")
+            inner_lines = get_lines(field, start_r, start_z, ycoords, yperiod=yperiod, npoints=npoints)
+        if outer_vacuum:
+            print ("Aligning to outer vacuum flux surface...")
+            outer_lines = get_lines(field, start_r+a, start_z, ycoords, yperiod=yperiod, npoints=npoints)
+            
+    xmin = np.min([min(outer_lines[i].R) for i in range(ny)])
+    xmax = np.max([max(outer_lines[i].R) for i in range(ny)]) 
+    zmin = np.min([min(outer_lines[i].Z) for i in range(ny)])
+    zmax = np.max([max(outer_lines[i].Z) for i in range(ny)])
+
+    if inner_VMEC:
+        print ("Aligning to inner VMEC flux surface...")
+        inner_lines = get_VMEC_surfaces(phi=ycoords,s=0.67,npoints=nz, w7x_run=vmec_url)
+
     print ("creating grid...")
-    poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz, show=show_maps) for inner, outer in zip(inner_lines, outer_lines) ]
+    poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz) for inner, outer in zip(inner_lines, outer_lines) ]
 
     # Create the 3D grid by putting together 2D poloidal grids
     grid = zb.grid.Grid(poloidal_grid, ycoords, yperiod, yperiodic=True)
+
+    field = zb.field.W7X_vacuum(phimax=2*np.pi/5., x_range=[xmin,xmax], z_range=[zmin,zmax], include_plasma_field=plasma_field)
+    
     maps =  zb.make_maps(grid, field)
     zb.write_maps(grid,field,maps,str(fname),metric2d=False)
 
     if calc_curvature:
         print("calculating curvature...")
-        calc_curvilinear_curvature(fname, field, grid)
+        calc_curvilinear_curvature(fname, field, grid, maps)
 
     if (calc_curvature and smooth_curvature):
         smooth_metric(fname, write_to_file=True, return_values=False, smooth_metric=True)
 
+    if show_maps:
+        zb.plot.plot_forward_map(grid, maps, yslice=-1)
+
 def get_lines(field, start_r, start_z, yslices, yperiod=2*np.pi, npoints=150, smoothing=False):
     rzcoord, ycoords = zb.fieldtracer.trace_poincare(field, start_r, start_z, yperiod, y_slices=yslices, revs=npoints)
-
-    # if smoothing:
-    #     angles = np.linspace(0,2*np.pi,npoints/10) ##some equally-spaced angles for re-interpolating the lines.
 
     lines = []
     for i in range(ycoords.shape[0]):
@@ -192,6 +224,7 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
 
         f = DataFile(str(fname), write=True)
         B = f.read("B")
+
         dx = grid.metric()["dx"]
         dz = grid.metric()["dz"]
         g_11 = grid.metric()["g_xx"]
@@ -214,9 +247,9 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
             R = pol.R
             Z = pol.Z
             # G = \vec{B}/B, here in cylindrical coordinates
-            GR[:,y,:] = field.Bxfunc(R,y,Z)/((B[:,y,:])**2)
-            GZ[:,y,:] = field.Bzfunc(R,y,Z)/((B[:,y,:])**2)
-            Gphi[:,y,:] = field.Byfunc(R,y,Z)/((B[:,y,:])**2)
+            GR[:,y,:] = field.Bxfunc(R,y,Z)/((field.Bmag(R,y,Z))**2)
+            GZ[:,y,:] = field.Bzfunc(R,y,Z)/((field.Bmag(R,y,Z))**2)
+            Gphi[:,y,:] = field.Byfunc(R,y,Z)/((field.Bmag(R,y,Z))**2)
             for x in np.arange(0,B.shape[0]):
                 dRdz[x,y,:] = calc.deriv(R[x,:])/dz[x,y,:]
                 dZdz[x,y,:] = calc.deriv(Z[x,:])/dz[x,y,:]
@@ -260,14 +293,18 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
         bxcvx = (dG_zdy - dG_ydz)/J
         bxcvy = (dG_xdz - dG_zdx)/J
         bxcvz = (dG_ydx - dG_xdy)/J
-        bxcv = g_11*(bxcvx**2) + g_22*(bxcvy**2) + g_33*(bxcvz**2) + 2*(bxcvz*bxcvx*g_13) 
+        ## the magnitude of the curvature -- for testing (not saved, just documented here)
+        bxcv = g_11*(bxcvx**2) + g_22*(bxcvy**2) + g_33*(bxcvz**2) + 2*(bxcvx*bxcvy*g_12 + bxcvy*bxcvz*g_23 + bxcvz*bxcvx*g_13)
+
+        ## save curvature components to file
         f.write('bxcvx', bxcvx)
         f.write('bxcvy', bxcvy)
         f.write('bxcvz', bxcvz)
+        f.write('J', J)
         f.close()
 
 ## smooth the metric tensor components
-def smooth_metric(fname, write_to_file=False, return_values=False, smooth_metric=True, order=7):
+def smooth_metric(fname, write_to_file=False, return_values=False, smooth_metric=True, smooth_curvature=False, order=7):
     from scipy.signal import savgol_filter
     f = DataFile(str(fname),write=True)
     B = f.read('B')
@@ -302,19 +339,20 @@ def smooth_metric(fname, write_to_file=False, return_values=False, smooth_metric
             bxcvz_smooth[x,y,:] = savgol_filter(bxcvz[x,y,:],np.int(np.ceil(bxcvz.shape[-1]/2)//2*2+1),order)
             bxcvy_smooth[x,y,:] = savgol_filter(bxcvy[x,y,:],np.int(np.ceil(bxcvy.shape[-1]/2)//2*2+1),order)
             if smooth_metric:
-                g11_smooth[x,y,:] = savgol_filter(g11[x,y,:],np.int(np.ceil(g11.shape[-1]/21.)//2*2+1),5)
-                g_11_smooth[x,y,:] = savgol_filter(g_11[x,y,:],np.int(np.ceil(g_11.shape[-1]/21.)//2*2+1),5)
-                g13_smooth[x,y,:] = savgol_filter(g13[x,y,:],np.int(np.ceil(g13.shape[-1]/21.)//2*2+1),5)
-                g_13_smooth[x,y,:] = savgol_filter(g_13[x,y,:],np.int(np.ceil(g_13.shape[-1]/21.)//2*2+1),5)
-                g33_smooth[x,y,:] = savgol_filter(g33[x,y,:],np.int(np.ceil(g33.shape[-1]/21.)//2*2+1),5)
-                g_33_smooth[x,y,:] = savgol_filter(g_33[x,y,:],np.int(np.ceil(g_33.shape[-1]/21.)//2*2+1),5)
+                g11_smooth[x,y,:] = savgol_filter(g11[x,y,:],np.int(np.ceil(g11.shape[-1]/2)//2*2+1),order)
+                g_11_smooth[x,y,:] = savgol_filter(g_11[x,y,:],np.int(np.ceil(g_11.shape[-1]/2)//2*2+1),order)
+                g13_smooth[x,y,:] = savgol_filter(g13[x,y,:],np.int(np.ceil(g13.shape[-1]/2)//2*2+1),order)
+                g_13_smooth[x,y,:] = savgol_filter(g_13[x,y,:],np.int(np.ceil(g_13.shape[-1]/2)//2*2+1),order)
+                g33_smooth[x,y,:] = savgol_filter(g33[x,y,:],np.int(np.ceil(g33.shape[-1]/2)//2*2+1),order)
+                g_33_smooth[x,y,:] = savgol_filter(g_33[x,y,:],np.int(np.ceil(g_33.shape[-1]/2)//2*2+1),order)
                 
 
     if(write_to_file):
-        f.write('bxcvx',bxcvx_smooth)
-        f.write('bxcvy',bxcvy_smooth)
-        f.write('bxcvz',bxcvz_smooth)
-
+        if smooth_curvature:
+            f.write('bxcvx',bxcvx_smooth)
+            f.write('bxcvy',bxcvy_smooth)
+            f.write('bxcvz',bxcvz_smooth)
+            
         if smooth_metric:
             f.write('g11',g11_smooth)
             f.write('g_11',g_11_smooth)
@@ -332,6 +370,21 @@ def plot_RE_poincare(xcentre=3, I_coil=0.005, a=0.5, start_r = 3.25, start_z=0.0
     field = zb.field.RotatingEllipse(xcentre = xcentre, I_coil=I_coil, radius = 2*a, yperiod = yperiod)
     zb.plot.plot_poincare(field, start_r, start_z, yperiod, revs=npoints)
 
+def plot_maps(field, grid, maps, yslice=0):
+    pol, ycoord = grid.getPoloidalGrid(yslice)
+    pol_next, ycoord_next = grid.getPoloidalGrid(yslice+1)
+
+    plt.plot(pol.R, pol.Z, 'x')
+
+    import pdb; pdb.set_trace()
+    # Get the coordinates which the forward map corresponds to
+    R_next, Z_next = pol_next.getCoordinate(maps['forward_xt_prime'][:,yslice,:], maps['forward_zt_prime'][:,yslice,:] )
+    
+    plt.plot(R_next, Z_next, 'o')
+    
+    plt.show()
+
+    
 if __name__ == '__main__':
     main()
 
