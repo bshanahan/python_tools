@@ -27,6 +27,9 @@ def vary_inclination(path='.', t_range=[100,150], thetas=np.linspace(-0.5,0.5,20
     else:
         return sigma_v
     
+def double_probe():
+    
+    return
 
 def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_error=False, t_min=50, pin_sep=5e-3, inclination=0., quiet=True):
     """ Synthetic MPM probe for 2D blob simulations
@@ -70,7 +73,9 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
     dz = collect('dz',path=path, info=False)
     Lx = ((dx.shape[0]-4)*dx[0,0])/(R0)
     Lz = dz * R0 * n.shape[-1]
-
+    R = np.linspace(0,Lx,n.shape[1])
+    Z = np.linspace(0,Lz,n.shape[-1])
+    RR,ZZ = np.meshgrid(R,Z,indexing='ij')
     # print ("Synthetic Measurement Frequency: {} MHz".format(np.around(1e-6/dt,decimals=3)))
 
     tsample_size = t_range[-1]-t_range[0]
@@ -102,7 +107,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
             if(np.any(n[t_min:,i,k] >  nmin+0.368*(nmax-nmin))):
                 trise[i,k] = int(np.argmax(Isat[t_min:,i,k] > Imin+0.368*(Imax-Imin))+t_min)
                 events[i,k] = 1
-                Epol[:,i,k] = (phi[:,(i+probe_offset_r)%(nx-1),0, (k+probe_offset_z)%(nz-1)] -  phi[:,(i+probe_offset_r)%(nx-1),0, (k-probe_offset_z)%(nz-1)])/(2*np.sqrt(pin_sep**2 + pin_sep_r**2))
+                Epol[:,i,k] = (phi[:,(i+probe_offset_r)%(nx-1),0, (k+probe_offset_z)%(nz-1)] -  phi[:,(i-probe_offset_r)%(nx-1),0, (k-probe_offset_z)%(nz-1)])/(2*np.sqrt(pin_sep**2 + pin_sep_r**2))
                 vr[:,i,k] = Epol[:,i,k] / B0
 
     trise_flat = trise.flatten()
@@ -111,52 +116,100 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
     vr_flat = vr.reshape(nt,nx*nz)
     I_flat = Isat.reshape(nt,nx*nz)
     
-    vr_offset = np.zeros((150,nx*nz))
-    Isat_offset = np.zeros((150,nx*nz))
+    vr_offset = np.zeros((250,nx*nz))
+    Isat_offset = np.zeros((250,nx*nz))
     event_indices = []
     # get measured velocity and density with same t==0, for CA.
     for count in np.arange(0,nx*nz):
         for t in np.arange(trange[0],trange[-1]):
             if (t==np.int(trise_flat[count])):
                 event_indices.append(count)
-                vr_offset[:,count] = vr_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
-                Isat_offset[:,count] = I_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
+                vr_offset[:,count] = vr_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+200), count]
+                Isat_offset[:,count] = I_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+200), count]
 
-    # Conditionally average.
-    vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
-    I_CA = np.mean(Isat_offset[:,event_indices], axis=-1)
-    I_CA_max,I_CA_min = np.amax(I_CA),np.amin(I_CA)
-    twindow = np.linspace(-50*dt, 100*dt, 150)
-    tmin, tmax = np.min(twindow[I_CA > Imin+0.368*(Imax-Imin)]), np.max(twindow[I_CA > Imin+0.368*(Imax-Imin)])
-    t_e = tmax-tmin
 
     ## get real velocity.
     v,pos_fit,pos,r,z,tcross = calc_com_velocity(path=path,fname=None,tmax=-1)
+    
+    ## time axis for lining up measurements.
+    twindow = np.linspace(-50*dt, 200*dt, 250)
 
-    ## The next 2 lines calculate the measured size, and could be more elegant...
+    ## The next line is used tocalculate the measured size, and could be more elegant...
     v_pol =(np.amax(z)-z[0])/(dt*nt)
-    delta_measured = t_e*v_pol
 
-    ## calculate the actual size of the filament -- averaged over R/Z.
-    n_real = n[trange,:,:]
-    n_real_max = np.zeros((tsample_size))
-    n_real_min = np.zeros((tsample_size))
-    Rsize = np.zeros((tsample_size))
-    Zsize = np.zeros((tsample_size))
-    delta_real = np.zeros((tsample_size))
-    for tind in np.arange(0,tsample_size):
-        n_real_max[tind], n_real_min[tind] = np.amax((n[trange[tind],:,:])),np.amin((n[trange[tind],:,:]))
-        n_real[tind,n_real[tind] < (n_real_min[tind]+0.368*(n_real_max[tind]-n_real_min[tind]))] = 0.0
-        R = np.linspace(0,Lx,n.shape[1])
-        Z = np.linspace(0,Lz,n.shape[-1])
-        RR,ZZ = np.meshgrid(R,Z,indexing='ij')
-        Rsize[tind] = np.max(RR[np.nonzero(n_real[tind])]) - np.min(RR[np.nonzero(n_real[tind])])
-        Zsize[tind] = np.max(ZZ[np.nonzero(n_real[tind])]) - np.min(ZZ[np.nonzero(n_real[tind])])
-        delta_real[tind] = np.mean([Rsize[tind],Zsize[tind]])
+    vr_CA = [] # [nt]
+    I_CA = [] # [nt]
+    delta_CA = [] ## a number.
+    te = []
 
-    delta_real_mean = np.mean(Zsize)
-    size_error = np.around(100*np.abs(delta_measured-delta_real_mean)/delta_real_mean,decimals=2)
-    velocity_error = np.around(100*np.abs(np.max(vr_CA)-np.max(v[trange]))/np.max(v[trange]),decimals=2)
+    n_real = n[:,:,:]
+    Rsize = np.zeros((n.shape[0]))
+    Zsize = np.zeros((n.shape[0]))
+    delta_real = np.zeros((n.shape[0]))
+    delta_real_mean = []
+    v_real = np.zeros((n.shape[0]))
+    v_max_real = []
+    # Conditionally average.
+    ## number of windows:
+    nwindows = int(len(event_indices)/300)
+    if nwindows > 1:
+        for i in np.arange(1,nwindows):
+            vr_window = np.mean(vr_offset[:,event_indices[300*(i-1):300*i]], axis=-1)
+            I_window = np.mean(Isat_offset[:,event_indices[300*(i-1):300*i]], axis=-1)
+            I_window_max, I_window_min = np.amax(I_window), np.min(I_window)
+            tmin, tmax = np.min(twindow[I_window > I_window_min+0.368*(I_window_max-I_window_min)]), np.max(twindow[I_window > I_window_min+0.368*(I_window_max-I_window_min)])
+            t_e_window = tmax-tmin
+            delta_window_measured = t_e_window*v_pol
+            vr_CA.append(vr_window)
+            I_CA.append(I_window)
+            te.append(t_e_window)
+            delta_CA.append(delta_window_measured)
+
+            ## get real measurements at these times. 
+            t0, t1 = trise_flat[event_indices[300*(i-1):300*i]]-50, trise_flat[event_indices[300*(i-1):300*i]]+200
+            for tind in np.arange(0,len(t0)):
+                t0_int = int(t0[tind])
+                t1_int = int(t1[tind])
+                if (delta_real[t0_int:t1_int].any() == 0): 
+                    for event_time in np.arange(t0_int, t1_int):
+                        n_real_max, n_real_min = np.amax((n[trange[t0_int:t1_int],:,:])),np.amin((n[trange[t0_int:t1_int],:,:]))
+                        n_real[event_time,n_real[event_time] < (n_real_min+0.368*(n_real_max-n_real_min))] = 0.0
+
+                        Rsize[event_time] = np.max(RR[np.nonzero(n_real[event_time,...])]) - np.min(RR[np.nonzero(n_real[event_time,...])])
+                        Zsize[event_time] = np.max(ZZ[np.nonzero(n_real[event_time,...])]) - np.min(ZZ[np.nonzero(n_real[event_time,...])])
+                    delta_real[t0_int:t1_int] = np.mean([Rsize[t0_int:t1_int],Zsize[t0_int:t1_int]])
+                    v_real[t0_int:t1_int] = np.max(v[t0_int:t1_int])
+            delta_real_mean.append(np.mean(delta_real))
+            v_max_real.append(np.mean(v_real))
+
+    else:
+        vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
+        I_CA = np.mean(Isat_offset[:,event_indices], axis=-1)
+        I_CA_max,I_CA_min = np.amax(I_CA),np.amin(I_CA)
+        tmin, tmax = np.min(twindow[I_CA > Imin+0.368*(Imax-Imin)]), np.max(twindow[I_CA > Imin+0.368*(Imax-Imin)])
+        t_e = tmax-tmin
+        delta_CA = t_e*v_pol
+
+        ## calculate the actual size of the filament -- averaged over R & Z.
+        for tind in np.arange(0,tsample_size):
+            n_real_max[tind], n_real_min[tind] = np.amax((n[trange[tind],:,:])),np.amin((n[trange[tind],:,:]))
+            n_real[tind,n_real[tind] < (n_real_min[tind]+0.368*(n_real_max[tind]-n_real_min[tind]))] = 0.0
+            R = np.linspace(0,Lx,n.shape[1])
+            Z = np.linspace(0,Lz,n.shape[-1])
+            RR,ZZ = np.meshgrid(R,Z,indexing='ij')
+            Rsize[tind] = np.max(RR[np.nonzero(n_real[tind])]) - np.min(RR[np.nonzero(n_real[tind])])
+            Zsize[tind] = np.max(ZZ[np.nonzero(n_real[tind])]) - np.min(ZZ[np.nonzero(n_real[tind])])
+            delta_real[tind] = np.mean([Rsize[tind],Zsize[tind]])
+
+        delta_real_mean = np.mean(delta_real)
+
+
+    delta_CA = np.asarray(delta_CA)
+    delta_real_mean = np.asarray(delta_real_mean)
+    vr_CA = np.max(np.asarray(vr_CA),axis=-1)
+    v_max_real = np.asarray(v_max_real)
+    size_error = np.around(100*np.abs(delta_CA-delta_real_mean)/delta_real_mean,decimals=2)
+    velocity_error = np.around(100*np.abs(np.max(vr_CA)-np.max(v_max_real))/np.max(v_max_real),decimals=2)
 
     if not quiet:
         print ("Number of events: {} ".format(np.around(len(event_indices),decimals=2)))
@@ -165,14 +218,14 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
 
     if not detailed_return:
         if return_error:
-            return  delta_measured, delta_real_mean, vr_CA, v, I_CA , size_error, velocity_error 
+            return  delta_CA, delta_real_mean, vr_CA, v, I_CA , size_error, velocity_error 
         else:
-            return  delta_measured, delta_real_mean, vr_CA, v, I_CA
+            return  delta_CA, delta_real_mean, vr_CA, v, I_CA
     else:
         if return_error:
-            return  delta_measured, delta_real_mean, vr_CA, v, I_CA, size_error, velocity_error, len(event_indices), t_e, trise
+            return  delta_CA, delta_real_mean, vr_CA, v, I_CA, size_error, velocity_error, len(event_indices), t_e, trise
         else:
-            return  delta_measured, delta_real_mean, vr_CA, v, I_CA, len(event_indices), t_e, trise
+            return  delta_CA, delta_real_mean, vr_CA, v, I_CA, len(event_indices), t_e, trise
 
 def get_Isat(n, Pe, path='.'):
     qe = 1.602176634e-19
@@ -257,7 +310,6 @@ def calc_com_velocity(path = "." ,fname=None, tmax=-1, track_peak=False):
             xpeakval[t,y] = xpos[0]
             zpeakval[t,y] = zpos[0]
 
-            # # import pdb;pdb.set_trace()
             if track_peak:
                 Rpos[t,y] = R[int(xpeakval[t,y]),y,int(zpeakval[t,y])]
                 Zpos[t,y] = Z[int(xpeakval[t,y]),y,int(zpeakval[t,y])]
