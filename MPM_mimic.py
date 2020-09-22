@@ -31,7 +31,7 @@ def double_probe():
     
     return
 
-def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_error=False, t_min=50, pin_sep=5e-3, inclination=0., quiet=True):
+def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_error=False, t_min=50, pin_sep=5e-3, inclination=0., quiet=True, CA_window=250):
     """ Synthetic MPM probe for 2D blob simulations
     Follows same conventions as Killer, Shanahan et al., PPCF 2020.
 
@@ -148,14 +148,15 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
     delta_real = np.zeros((n.shape[0]))
     delta_real_mean = []
     v_real = np.zeros((n.shape[0]))
+    delta_real_window = np.zeros((n.shape[0]))
     v_max_real = []
     # Conditionally average.
     ## number of windows:
-    nwindows = int(len(event_indices)/300)
+    nwindows = int(len(event_indices)/CA_window)
     if nwindows > 1:
-        for i in np.arange(1,nwindows):
-            vr_window = np.mean(vr_offset[:,event_indices[300*(i-1):300*i]], axis=-1)
-            I_window = np.mean(Isat_offset[:,event_indices[300*(i-1):300*i]], axis=-1)
+        for i in np.arange(1,nwindows+1):
+            vr_window = np.mean(vr_offset[:,event_indices[CA_window*(i-1):CA_window*i]], axis=-1)
+            I_window = np.mean(Isat_offset[:,event_indices[CA_window*(i-1):CA_window*i]], axis=-1)
             I_window_max, I_window_min = np.amax(I_window), np.min(I_window)
             tmin, tmax = np.min(twindow[I_window > I_window_min+0.368*(I_window_max-I_window_min)]), np.max(twindow[I_window > I_window_min+0.368*(I_window_max-I_window_min)])
             t_e_window = tmax-tmin
@@ -166,50 +167,57 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
             delta_CA.append(delta_window_measured)
 
             ## get real measurements at these times. 
-            t0, t1 = trise_flat[event_indices[300*(i-1):300*i]]-50, trise_flat[event_indices[300*(i-1):300*i]]+200
+            t0, t1 = trise_flat[event_indices[CA_window*(i-1):CA_window*i]]-50, trise_flat[event_indices[CA_window*(i-1):CA_window*i]]+200
             for tind in np.arange(0,len(t0)):
                 t0_int = int(t0[tind])
                 t1_int = int(t1[tind])
                 if (delta_real[t0_int:t1_int].any() == 0): 
                     for event_time in np.arange(t0_int, t1_int):
-                        n_real_max, n_real_min = np.amax((n[trange[t0_int:t1_int],:,:])),np.amin((n[trange[t0_int:t1_int],:,:]))
+                        n_real_max, n_real_min = np.max((n[event_time,:,:])),np.min((n[event_time,:,:]))
                         n_real[event_time,n_real[event_time] < (n_real_min+0.368*(n_real_max-n_real_min))] = 0.0
 
                         Rsize[event_time] = np.max(RR[np.nonzero(n_real[event_time,...])]) - np.min(RR[np.nonzero(n_real[event_time,...])])
                         Zsize[event_time] = np.max(ZZ[np.nonzero(n_real[event_time,...])]) - np.min(ZZ[np.nonzero(n_real[event_time,...])])
-                    delta_real[t0_int:t1_int] = np.mean([Rsize[t0_int:t1_int],Zsize[t0_int:t1_int]])
-                    v_real[t0_int:t1_int] = np.max(v[t0_int:t1_int])
-            delta_real_mean.append(np.mean(delta_real))
-            v_max_real.append(np.mean(v_real))
+                        delta_real[event_time] = np.mean(Zsize[event_time])
+                v_real[t0_int:t1_int] = np.mean(v[t0_int:t1_int])
+                delta_real_window[t0_int:t1_int] = np.mean(delta_real[t0_int:t1_int])
+            v_max_real.append(np.amax(v_real))
+            # print (v_real)
+                            
+            delta_real_mean.append(np.mean(delta_real_window[delta_real_window>0]))
 
     else:
         vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
         I_CA = np.mean(Isat_offset[:,event_indices], axis=-1)
-        I_CA_max,I_CA_min = np.amax(I_CA),np.amin(I_CA)
+        I_CA_max,I_CA_min = np.max(I_CA),np.min(I_CA)
         tmin, tmax = np.min(twindow[I_CA > Imin+0.368*(Imax-Imin)]), np.max(twindow[I_CA > Imin+0.368*(Imax-Imin)])
         t_e = tmax-tmin
         delta_CA = t_e*v_pol
-
+        
+        n_real_max = np.zeros((tsample_size))
+        n_real_min = np.zeros((tsample_size))
         ## calculate the actual size of the filament -- averaged over R & Z.
         for tind in np.arange(0,tsample_size):
             n_real_max[tind], n_real_min[tind] = np.amax((n[trange[tind],:,:])),np.amin((n[trange[tind],:,:]))
             n_real[tind,n_real[tind] < (n_real_min[tind]+0.368*(n_real_max[tind]-n_real_min[tind]))] = 0.0
-            R = np.linspace(0,Lx,n.shape[1])
-            Z = np.linspace(0,Lz,n.shape[-1])
+            R = np.linspace(0,Lx,n_real.shape[1])
+            Z = np.linspace(0,Lz,n_real.shape[-1])
             RR,ZZ = np.meshgrid(R,Z,indexing='ij')
-            Rsize[tind] = np.max(RR[np.nonzero(n_real[tind])]) - np.min(RR[np.nonzero(n_real[tind])])
-            Zsize[tind] = np.max(ZZ[np.nonzero(n_real[tind])]) - np.min(ZZ[np.nonzero(n_real[tind])])
+            Rsize[tind] = np.max(RR[np.nonzero(n_real[tind,...])]) - np.min(RR[np.nonzero(n_real[tind,...])])
+            Zsize[tind] = np.max(ZZ[np.nonzero(n_real[tind,...])]) - np.min(ZZ[np.nonzero(n_real[tind,...])])
             delta_real[tind] = np.mean([Rsize[tind],Zsize[tind]])
 
+        v_max_real = np.amax(v[trange])
         delta_real_mean = np.mean(delta_real)
 
 
     delta_CA = np.asarray(delta_CA)
     delta_real_mean = np.asarray(delta_real_mean)
-    vr_CA = np.max(np.asarray(vr_CA),axis=-1)
+    vr_CA = np.amax(np.asarray(vr_CA),axis=-1)
+    I_CA = np.asarray(I_CA)
     v_max_real = np.asarray(v_max_real)
     size_error = np.around(100*np.abs(delta_CA-delta_real_mean)/delta_real_mean,decimals=2)
-    velocity_error = np.around(100*np.abs(np.max(vr_CA)-np.max(v_max_real))/np.max(v_max_real),decimals=2)
+    velocity_error = np.around(100*np.abs(vr_CA-v_max_real)/v_max_real,decimals=2)
 
     if not quiet:
         print ("Number of events: {} ".format(np.around(len(event_indices),decimals=2)))
@@ -220,7 +228,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
         if return_error:
             return  delta_CA, delta_real_mean, vr_CA, v, I_CA , size_error, velocity_error 
         else:
-            return  delta_CA, delta_real_mean, vr_CA, v, I_CA
+            return  delta_CA, delta_real_mean, vr_CA, v_max_real, I_CA
     else:
         if return_error:
             return  delta_CA, delta_real_mean, vr_CA, v, I_CA, size_error, velocity_error, len(event_indices), t_e, trise
@@ -318,21 +326,21 @@ def calc_com_velocity(path = "." ,fname=None, tmax=-1, track_peak=False):
                 Zpos[t,y] = Z[xval[t,y],y,zval[t,y]]
             
         pos[:,y] = np.sqrt((Rpos[:,y]-Rpos[0,y])**2)# + (Zpos[:,y]-Zpos[0,y])**2)
-        z1 = np.polyfit(t_array[:],pos[:,y],5)
+        z1 = np.polyfit(t_array[:],pos[:,y],6)
         f = np.poly1d(z1)
         pos_fit[:,y] = f(t_array[:])
 
-        t_cross = np.where(pos_fit[:,y]>pos[:,y])[0]
+        # t_cross = np.where(pos_fit[:,y]>pos[:,y])[0]
         t_cross = 0 #t_cross[0]
 
-        pos_fit[:t_cross,y] = pos[:t_cross,y]
-
-        z1 = np.polyfit(t_array[:],pos[:,y],5)
-        f = np.poly1d(z1)
-        pos_fit[:,y] = f(t_array[:])
         # pos_fit[:t_cross,y] = pos[:t_cross,y]
 
-        v_fit[:,y] = calc.deriv(pos_fit[:,y])/dt
+        # z1 = np.polyfit(t_array[:],pos[:,y],5)
+        # f = np.poly1d(z1)
+        # pos_fit[:,y] = f(t_array[:])
+        # # pos_fit[:t_cross,y] = pos[:t_cross,y]
+
+        # v_fit[:,y] = calc.deriv(pos_fit[:,y])/dt
 
         # hole_fill = interp1d(t_array[::t_cross+2], v_fit[::t_cross+2,y] )
         
@@ -343,8 +351,8 @@ def calc_com_velocity(path = "." ,fname=None, tmax=-1, track_peak=False):
         pos_index = np.sort(pos_index)
         XX = np.vstack(( t_array[:]**5, t_array[:]**4,t_array[:]**3,t_array[:]**2,t_array[:], pos[pos_index[0],y]*np.ones_like(t_array[:]))).T
 
-        pos_fit_no_offset = np.linalg.lstsq(XX[pos_index,:-2],pos[pos_index,y],rcond=None)[0]
-        pos_fit[:,y] = np.dot(pos_fit_no_offset,XX[:,:-2].T)
+        pos_fit_no_offset = np.linalg.lstsq(XX[pos_index,:-1],pos[pos_index,y],rcond=None)[0]
+        # pos_fit[:,y] = np.dot(pos_fit_no_offset,XX[:,:-1].T)
         v_fit[:,y] = calc.deriv(pos_fit[:,y])/dt
 
         #        # Take fit of raw velocity calculation
