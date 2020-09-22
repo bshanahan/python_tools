@@ -45,7 +45,7 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
             inner_lines = get_lines(field, start_r, start_z, ycoords, yperiod=yperiod, npoints=npoints)
         if curvilinear_outer_aligned:
             print ("Aligning to outer flux surface...")
-            outer_lines = get_lines(field, start_r+a, start_z, ycoords, yperiod=yperiod, npoints=npoints)
+            outer_lines = get_lines(field, xcentre+a, start_z, ycoords, yperiod=yperiod, npoints=npoints)
             
         print ("creating grid...")
         if curvilinear_inner_aligned:
@@ -69,8 +69,6 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
     if (calc_curvature and smooth_curvature):
         smooth_metric(fname, write_to_file=True, return_values=False, smooth_metric=True)
 
-    # if show_maps:
-    #     plot_maps(field, grid, maps, yslice=0)
 
 def W7X(nx=68,ny=32,nz=256,fname='W7-X.fci.nc', vmec_file='w7-x.wout.nc', inner_VMEC=False, inner_vacuum=False, outer_VMEC=False, outer_vacuum=False, outer_vessel=False, npoints=100, a=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False, plasma_field=False, configuration=0, vmec_url='http://svvmec1.ipp-hgw.mpg.de:8080/vmecrest/v1/w7x_ref_171/wout.nc'):
 
