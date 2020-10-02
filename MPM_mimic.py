@@ -102,7 +102,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
             if(np.any(n[t_min:,i,k] >  nmin+0.368*(nmax-nmin))):
                 trise[i,k] = int(np.argmax(Isat[t_min:,i,k] > Imin+0.368*(Imax-Imin))+t_min)
                 events[i,k] = 1
-                Epol[:,i,k] = (phi[:,(i+probe_offset_r)%(nx-1),0, (k+probe_offset_z)%(nz-1)] -  phi[:,(i+probe_offset_r)%(nx-1),0, (k-probe_offset_z)%(nz-1)])/(2*np.sqrt(pin_sep**2 + pin_sep_r**2))
+                Epol[:,i,k] = (phi[:,(i+probe_offset_r)%(nx-1),0, (k+probe_offset_z)%(nz-1)] -  phi[:,(i-probe_offset_r)%(nx-1),0, (k-probe_offset_z)%(nz-1)])/(2*np.sqrt(pin_sep**2 + pin_sep_r**2))
                 vr[:,i,k] = Epol[:,i,k] / B0
 
     trise_flat = trise.flatten()
@@ -111,22 +111,23 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
     vr_flat = vr.reshape(nt,nx*nz)
     I_flat = Isat.reshape(nt,nx*nz)
     
-    vr_offset = np.zeros((150,nx*nz))
-    Isat_offset = np.zeros((150,nx*nz))
+    vr_offset = np.zeros((250,nx*nz))
+    Isat_offset = np.zeros((250,nx*nz))
     event_indices = []
     # get measured velocity and density with same t==0, for CA.
     for count in np.arange(0,nx*nz):
         for t in np.arange(trange[0],trange[-1]):
             if (t==np.int(trise_flat[count])):
                 event_indices.append(count)
-                vr_offset[:,count] = vr_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
-                Isat_offset[:,count] = I_flat[np.int(trise_flat[count])-50:np.int(trise_flat[count]+100), count]
+                t_measurement = [min(max(np.int(trise_flat[count])-50,0),250), min(np.int(trise_flat[count])+200,500)]
+                vr_offset[:,count] = vr_flat[t_measurement[0]:t_measurement[-1], count]
+                Isat_offset[:,count] = I_flat[t_measurement[0]:t_measurement[-1], count]
 
     # Conditionally average.
     vr_CA = np.mean(vr_offset[:,event_indices], axis=-1)
     I_CA = np.mean(Isat_offset[:,event_indices], axis=-1)
     I_CA_max,I_CA_min = np.amax(I_CA),np.amin(I_CA)
-    twindow = np.linspace(-50*dt, 100*dt, 150)
+    twindow = np.linspace(-50*dt, 200*dt, 250)
     tmin, tmax = np.min(twindow[I_CA > Imin+0.368*(Imax-Imin)]), np.max(twindow[I_CA > Imin+0.368*(Imax-Imin)])
     t_e = tmax-tmin
 
@@ -134,9 +135,11 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
     v,pos_fit,pos,r,z,tcross = calc_com_velocity(path=path,fname=None,tmax=-1)
 
     ## The next 2 lines calculate the measured size, and could be more elegant...
-    v_pol =(np.amax(z)-z[0])/(dt*nt)
+    v_pol = np.mean(calc.deriv(z[50:int(nt/2)])/(dt))
     delta_measured = t_e*v_pol
 
+    print (v_pol)
+    # plt.plot(twindow, I_CA); plt.hlines(Imin+0.368*(Imax-Imin), 0, t_e); plt.show()
     ## calculate the actual size of the filament -- averaged over R/Z.
     n_real = n[trange,:,:]
     n_real_max = np.zeros((tsample_size))
@@ -154,7 +157,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
         Zsize[tind] = np.max(ZZ[np.nonzero(n_real[tind])]) - np.min(ZZ[np.nonzero(n_real[tind])])
         delta_real[tind] = np.mean([Rsize[tind],Zsize[tind]])
 
-    delta_real_mean = np.mean(Zsize)
+    delta_real_mean = np.mean(delta_real[0])
     size_error = np.around(100*np.abs(delta_measured-delta_real_mean)/delta_real_mean,decimals=2)
     velocity_error = np.around(100*np.abs(np.max(vr_CA)-np.max(v[trange]))/np.max(v[trange]),decimals=2)
 
@@ -175,18 +178,21 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
             return  delta_measured, delta_real_mean, vr_CA, v, I_CA, len(event_indices), t_e, trise
 
 def get_Isat(n, Pe, path='.'):
+    # Returns ion saturation current density in mA/mm**2
+    # NOTE: Pin area is set.
+    
     qe = 1.602176634e-19
     m_i = 1.672621898e-27
 
     Te = np.divide(Pe, n)
 
-    Isat = n * 0.49 * qe * np.sqrt((qe * Te) / (m_i)) * 1e-3
+    Isat = n * 0.49 * qe * np.sqrt((qe * Te) / (m_i)) * (np.pi/2)* 1e-3
 
     T0 = collect('Tnorm', path=path, info=False) 
     n0 = collect('Nnorm', path=path, info=False)
-   
-    J0 = n0 * 0.49 * qe * np.sqrt((qe * T0) / (m_i)) * 1e-3
-
+    cs = collect('Cs0', path=path, info=False)
+    J0 = n0 * 0.49 * qe * np.sqrt((qe * T0) / (m_i)) * (np.pi/2) * 1e-3
+    # Isat = 0.49*n*cs*qe*8e-3
     return Isat-J0
 
 def calc_com_velocity(path = "." ,fname=None, tmax=-1, track_peak=False):
@@ -286,14 +292,14 @@ def calc_com_velocity(path = "." ,fname=None, tmax=-1, track_peak=False):
         
         # v_fit[:t_cross+1,y] = hole_fill(t_array[:t_cross+1])
 
-        # pos_index =1+ np.where(pos[:-1,y] != pos[1:,y])[0]
-        posunique, pos_index = np.unique(pos[:,y],return_index=True)
-        pos_index = np.sort(pos_index)
-        XX = np.vstack(( t_array[:]**5, t_array[:]**4,t_array[:]**3,t_array[:]**2,t_array[:], pos[pos_index[0],y]*np.ones_like(t_array[:]))).T
+        # # pos_index =1+ np.where(pos[:-1,y] != pos[1:,y])[0]
+        # posunique, pos_index = np.unique(pos[:,y],return_index=True)
+        # pos_index = np.sort(pos_index)
+        # XX = np.vstack(( t_array[:]**5, t_array[:]**4,t_array[:]**3,t_array[:]**2,t_array[:], pos[pos_index[0],y]*np.ones_like(t_array[:]))).T
 
-        pos_fit_no_offset = np.linalg.lstsq(XX[pos_index,:-2],pos[pos_index,y],rcond=None)[0]
-        pos_fit[:,y] = np.dot(pos_fit_no_offset,XX[:,:-2].T)
-        v_fit[:,y] = calc.deriv(pos_fit[:,y])/dt
+        # pos_fit_no_offset = np.linalg.lstsq(XX[pos_index,:-2],pos[pos_index,y],rcond=None)[0]
+        # pos_fit[:,y] = np.dot(pos_fit_no_offset,XX[:,:-2].T)
+        # v_fit[:,y] = calc.deriv(pos_fit[:,y])/dt
 
         #        # Take fit of raw velocity calculation
         # v  = calc.deriv(pos[:,y])/dt

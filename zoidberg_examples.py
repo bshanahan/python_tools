@@ -5,9 +5,9 @@ import boututils.calculus as calc
 import matplotlib.pyplot as plt
 import random
 
-def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True,rectangular=False, fname='rotating-ellipse.fci.nc', a=0.4, curvilinear_inner_aligned=True, curvilinear_outer_aligned=True, npoints=421, Btor=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False):
+def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True,rectangular=False, fname='rotating-ellipse.fci.nc', a=0.4, curvilinear_inner_aligned=True, curvilinear_outer_aligned=True, npoints=421, Btor=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False, return_iota=True, write_iota=False):
     yperiod = 2*np.pi/5.
-    field = zb.field.RotatingEllipse(xcentre = xcentre, I_coil=I_coil, radius = 2*a, yperiod = yperiod)
+    field = zb.field.RotatingEllipse(xcentre = xcentre, I_coil=I_coil, radius = 2*a, yperiod = yperiod, Btor=Btor)
     # Define the y locations
     ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
     start_r = xcentre+a/2.
@@ -26,7 +26,7 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
             inner_lines = get_lines(field, start_r, start_z, ycoords, yperiod=yperiod, npoints=npoints)
         if curvilinear_outer_aligned:
             print ("Aligning to outer flux surface...")
-            outer_lines = get_lines(field, start_r+a, start_z, ycoords, yperiod=yperiod, npoints=npoints)
+            outer_lines = get_lines(field, xcentre+a, start_z, ycoords, yperiod=yperiod, npoints=npoints)
             
         print ("creating grid...")
         if curvilinear_inner_aligned:
@@ -49,6 +49,17 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
 
     if (calc_curvature and smooth_curvature):
         smooth_metric(fname, write_to_file=True, return_values=False, smooth_metric=True)
+
+    if (return_iota or write_iota):
+        rindices = np.linspace(start_r, xcentre+a, nx)
+        zindices = np.zeros((nx))
+        iota_bar = calc_iota(field, start_r, start_z)
+        if (write_iota):
+            f = DataFile(str(fname), write=True)
+            f.write('iota_bar', iota_bar)
+            f.close()
+        else:
+            print ("Iota_bar = ", iota_bar)
 
 def W7X(nx=68,ny=16,nz=256,fname='W7-X.fci.nc', VMEC=True, vmec_file='w7-x.wout.nc', inner_VMEC=True, inner_vacuum=False, outer_VMEC=True, outer_vacuum=False, outer_vessel=False, npoints=100, a=0.5, show_maps=False, calc_curvature=True, smooth_curvature=False, configuration=0):
     field = zb.field.W7X(phimax=2*np.pi/5.)
@@ -264,6 +275,7 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
         f.write('bxcvx', bxcvx)
         f.write('bxcvy', bxcvy)
         f.write('bxcvz', bxcvz)
+        f.write('J', J)
         f.close()
 
 ## smooth the metric tensor components
@@ -331,6 +343,17 @@ def plot_RE_poincare(xcentre=3, I_coil=0.005, a=0.5, start_r = 3.25, start_z=0.0
     yperiod = 2*np.pi
     field = zb.field.RotatingEllipse(xcentre = xcentre, I_coil=I_coil, radius = 2*a, yperiod = yperiod)
     zb.plot.plot_poincare(field, start_r, start_z, yperiod, revs=npoints)
+
+def calc_iota(field, start_r, start_z):
+    from scipy.signal import argrelextrema
+    toroidal_angle = np.linspace(0.0, 400*np.pi, 10000, endpoint=False)
+    result = zb.fieldtracer.FieldTracer.follow_field_lines(field,start_r,start_z,toroidal_angle)
+    peaks = argrelextrema(result[:,0,0], np.greater, order=10)[0]
+    peak_locations = [result[i,0,0] for i in peaks]
+    print (peak_locations, peaks)
+    iota_bar = 2*np.pi/(toroidal_angle[peaks[1]]-toroidal_angle[peaks[0]])
+    plt.plot(toroidal_angle, result[:,0,0]); plt.show()
+    return iota_bar
 
 if __name__ == '__main__':
     main()
