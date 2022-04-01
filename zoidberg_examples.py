@@ -317,9 +317,9 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
             R = pol.R
             Z = pol.Z
             # G = \vec{B}/B, here in cylindrical coordinates
-            GR[:,y,:] = field.Bxfunc(R,y,Z)/((B[:,y,:])**2)
-            GZ[:,y,:] = field.Bzfunc(R,y,Z)/((B[:,y,:])**2)
-            Gphi[:,y,:] = field.Byfunc(R,y,Z)/((B[:,y,:])**2)
+            GR[:,y,:] = field.Bxfunc(R,Z,y)/((B[:,y,:])**2)
+            GZ[:,y,:] = field.Bzfunc(R,Z,y)/((B[:,y,:])**2)
+            Gphi[:,y,:] = field.Byfunc(R,Z,y)/((B[:,y,:])**2)
             for x in np.arange(0,B.shape[0]):
                 dRdz[x,y,:] = calc.deriv(R[x,:])/dz[x,y,:]
                 dZdz[x,y,:] = calc.deriv(Z[x,:])/dz[x,y,:]
