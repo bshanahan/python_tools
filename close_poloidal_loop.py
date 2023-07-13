@@ -4,13 +4,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def close_poloidal_loop(var, fname):
-    nt,nx,ny,nz = var.shape
     f = DataFile(fname)
     r = f.read("R")
     z = f.read("Z")
-    var_new = np.empty((nt,nx,ny,nz+1))
-    r_new = np.empty((nx,ny,nz+1))
-    z_new = np.empty((nx,ny,nz+1))
+    if len(var.shape) == 4:
+        time_varying=True
+        nt,nx,ny,nz = var.shape
+        r_new = np.empty((nx,ny,nz+1))
+        z_new = np.empty((nx,ny,nz+1))
+        var_new = np.empty((nt,nx,ny,nz+1))
+    elif len(var.shape) == 3:
+        time_varying=False
+        nx,ny,nz = var.shape
+        r_new = np.empty((nx,ny,nz+1))
+        z_new = np.empty((nx,ny,nz+1))
+        var_new = np.empty((nx,ny,nz+1))
+        
+    elif len(var.shape) == 2:
+        time_varying=False
+        nx,ny,nz = r.shape
+        r_new = np.empty((nx,ny,nz+1))
+        z_new = np.empty((nx,ny,nz+1))
+        var_new = np.empty((nx,nz+1))
+
+
     for k in np.arange(0,nz+1):
         if (k<nz):
             r_new[...,k] = r[...,k]
@@ -18,12 +35,17 @@ def close_poloidal_loop(var, fname):
         else:
             r_new[...,k] = r[...,0]
             z_new[...,k] = z[...,0]
-        for t in np.arange(0,nt):
+        if time_varying:
+            for t in np.arange(0,nt):
+                if (k<nz):
+                    var_new[t,...,k] = var[t,...,k]
+                else:
+                    var_new[t,...,k] = var[t,...,0]
+        else:
             if (k<nz):
-                var_new[t,...,k] = var[t,...,k]
+                var_new[...,k] = var[...,k]
             else:
-                var_new[t,...,k] = var[t,...,0]
-
+                var_new[...,k] = var[...,0]            
     return r_new,z_new,var_new
 
 
