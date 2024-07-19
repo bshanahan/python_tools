@@ -4,17 +4,16 @@ from boututils.datafile import DataFile
 import boututils.calculus as calc
 import matplotlib.pyplot as plt
 import random
+import copy
 
-def screwpinch(nx=68,ny=16,nz=128, xcentre=1.5, fname='screwpinch.fci.nc', a=0.2, npoints=421, show_maps=False):
+def screwpinch(nx=68,ny=16,nz=128, xcentre=1.5, fname='screwpinch_elongated.fci.nc', a=0.2, npoints=421, show_maps=False):
     yperiod = 2*np.pi
-    field = zb.field.Screwpinch(xcentre = xcentre, yperiod = yperiod, shear=0*2e-1)
+    field = zb.field.Screwpinch(xcentre = xcentre, yperiod = yperiod, shear=2e-1)
     ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
-    start_r = xcentre+a/2.
-    start_z = 0.
     print ("Making curvilinear poloidal grid")
     inner = zb.rzline.shaped_line(R0=xcentre, a=a/2., elong=0, triang=0.0, indent=0, n=npoints)
-    outer = zb.rzline.shaped_line(R0=xcentre, a=a, elong=0, triang=0.0, indent=0, n=npoints)
-    poloidal_grid = zb .poloidal_grid.grid_elliptic(inner, outer,
+    outer = zb.rzline.shaped_line(R0=xcentre, a=a, elong=-0.2, triang=0.0, indent=0, n=npoints)
+    poloidal_grid = zb.poloidal_grid.grid_elliptic(inner, outer,
                                                    nx, nz)
     grid = zb.grid.Grid(poloidal_grid, ycoords, yperiod, yperiodic=True)
     maps =  zb.make_maps(grid, field)
@@ -80,15 +79,29 @@ def rotating_ellipse(nx=68,ny=16,nz=128,xcentre=5.5,I_coil=0.01,curvilinear=True
         else:
             print ("Iota_bar = ", iota_bar)
 
-def dommaschk(nx=68,ny=16,nz=128, C=None, xcentre=1.0, Btor=1.0, a=0.1, curvilinear=True,rectangular=False, fname='Dommaschk.fci.nc', curvilinear_inner_aligned=True, curvilinear_outer_aligned=True, npoints=421, show_maps=False, calc_curvature=True, smooth_curvature=False, return_iota=True, write_iota=False):
+def dommaschk(nx=68,ny=16,nz=128, C=None, xcentre=1.0, Btor=1.0, a=0.1, curvilinear=True, rectangular=False, fname='Dommaschk.fci.nc', curvilinear_inner_aligned=True, curvilinear_outer_aligned=True, npoints=421, show_maps=False, calc_curvature=True, smooth_curvature=False, return_iota=True, write_iota=False):
 
     if C is None:
         C = np.zeros((6,5,4))
         C[5,2,1] = .4 
         C[5,2,2] = .4 
         # C[5,4,1] = 19.25
+
+    elif C == 'Coelho':
+        C = np.zeros((6,10,4))
+        C[5,2,1] = 1.5
+        C[5,2,2] = 1.5
+        C[5,4,1] = 10
+        C[5,9,0] = -7.5E9
+        C[5,9,3] = 7.5E9
+
+    elif C== 'Coelho_noislands':
+        C = np.zeros((6,5,4))
+        C[5,2,1] = 1.5
+        C[5,2,2] = 1.5
+        C[5,4,1] = 10
         
-    yperiod = 2*np.pi/5.
+    yperiod = 2*np.pi
     field = zb.field.DommaschkPotentials(C, R_0=xcentre, B_0=Btor)
     # Define the y locations
     ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
@@ -142,13 +155,13 @@ def dommaschk(nx=68,ny=16,nz=128, C=None, xcentre=1.0, Btor=1.0, a=0.1, curvilin
             f.close()
         else:
             print ("Iota_bar = ", iota_bar)
-def W7X(nx=68,ny=32,nz=256,fname='W7-X.fci.nc', vmec_file='w7-x.wout.nc', inner_VMEC=False, inner_vacuum=False, outer_VMEC=False, outer_vacuum=False, outer_vessel=False, npoints=100, a=2.5, show_maps=False, calc_curvature=True, smooth_curvature=False, plasma_field=False, configuration=0, vmec_url='http://svvmec1.ipp-hgw.mpg.de:8080/vmecrest/v1/w7x_ref_171/wout.nc'):
+def W7X(nx=68,ny=32,nz=256,fname='W7-X.fci.nc', vmec_file='w7-x.wout.nc', inner_VMEC=True, inner_vacuum=False, outer_VMEC=True, outer_vacuum=False, outer_vessel=False, npoints=100, a=.5, show_maps=False, calc_curvature=True, smooth_curvature=False, plasma_field=False, VMEC_field=True, vacuum_field=False, configuration=0, vmec_url='http://svvmec1.ipp-hgw.mpg.de:8080/vmecrest/v1/w7x_ref_171/wout.nc', scale=1.0, b_scale=1.0):
 
     yperiod = 2*np.pi/5.
     ycoords = np.linspace(0.0, yperiod, ny, endpoint=False)
     if outer_VMEC:
         print ("Aligning to outer VMEC flux surface...")
-        outer_lines = get_VMEC_surfaces(phi=ycoords,s=1,npoints=nz, w7x_run=vmec_url)
+        outer_lines = get_VMEC_surfaces(phi=ycoords,s=0.8,npoints=nz, w7x_run=vmec_url)
     elif outer_vessel:
         print ("Aligning to plasma vessel (EXPERIMENTAL) ...")
         outer_lines = get_W7X_vessel(phi=ycoords, nz=nz)
@@ -167,24 +180,38 @@ def W7X(nx=68,ny=32,nz=256,fname='W7-X.fci.nc', vmec_file='w7-x.wout.nc', inner_
         if outer_vacuum:
             print ("Aligning to outer vacuum flux surface...")
             outer_lines = get_lines(field, start_r+a, start_z, ycoords, yperiod=yperiod, npoints=npoints)
-            
-    xmin = np.min([min(outer_lines[i].R) for i in range(ny)])
-    xmax = np.max([max(outer_lines[i].R) for i in range(ny)]) 
-    zmin = np.min([min(outer_lines[i].Z) for i in range(ny)])
-    zmax = np.max([max(outer_lines[i].Z) for i in range(ny)])
 
     if inner_VMEC:
         print ("Aligning to inner VMEC flux surface...")
-        inner_lines = get_VMEC_surfaces(phi=ycoords,s=0.67,npoints=nz, w7x_run=vmec_url)
+        inner_lines = get_VMEC_surfaces(phi=ycoords,s=0.42,npoints=nz, w7x_run=vmec_url)
+        
+    xmin = np.min([min(outer_lines[i].R) for i in range(ny)])
+    xmax = np.max([max(outer_lines[i].R) for i in range(ny)])
+    zmin = np.min([min(outer_lines[i].Z) for i in range(ny)])
+    zmax = np.max([max(outer_lines[i].Z) for i in range(ny)])
 
     print ("creating grid...")
-    poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz, show=show_maps) for inner, outer in zip(inner_lines, outer_lines) ]
+    poloidal_grid = [ zb.poloidal_grid.grid_elliptic(inner, outer, nx, nz, show=show_maps, nx_outer=2) for inner, outer in zip(inner_lines, outer_lines) ]
 
     # Create the 3D grid by putting together 2D poloidal grids
     grid = zb.grid.Grid(poloidal_grid, ycoords, yperiod, yperiodic=True)
 
-    field = zb.field.W7X_vacuum(phimax=2*np.pi/5., x_range=[xmin,xmax], z_range=[zmin,zmax], include_plasma_field=plasma_field)
-    
+    if vacuum_field:
+        field = zb.field.W7X_vacuum(phimax=2*np.pi/5., x_range=[xmin,xmax], z_range=[zmin,zmax], include_plasma_field=plasma_field)
+    elif VMEC_field:
+        field = zb.field.W7X_VMEC(x_range=[xmin,xmax], z_range=[zmin,zmax], phi_range=[0,yperiod], vmec_id=vmec_url)
+        # field = zb.field.VMEC(vmec_file='R200B05.wout.nc')
+
+    test_field = False
+    if test_field :
+        for y in np.arange(0,ycoords.shape[0]):
+            R, Z = poloidal_grid[y].R , poloidal_grid[y].Z
+            B = field.Bmag(R,Z,ycoords[y])
+            plt.contourf(R[:,:], Z[:,:], B[:,:],100); plt.colorbar(); plt.axis("equal"); plt.show()
+    R, Z = poloidal_grid[0].R , poloidal_grid[0].Z
+    print (R[18,0], Z[18,0])
+    zb.plot.plot_poincare(field, R[int(nx/2),0], Z[int(nx/2),0], yperiod, revs=100)
+
     maps =  zb.make_maps(grid, field)
     zb.write_maps(grid,field,maps,str(fname),metric2d=False)
 
@@ -213,9 +240,31 @@ def get_lines(field, start_r, start_z, yslices, yperiod=2*np.pi, npoints=150, sm
             
     return lines
 
+# def get_VMEC_field(r,phi,z,vmec_url=None):
+#     from osa import Client 
+#     client = .;Client("http://esb.ipp-hgw.mpg.de:8280/services/vmec_v5?wsdl")#'http://esb:8280/services/vmec_v5?wsdl')
+#     pos = tracer.types.Points3D()
 
+#     nx = r.shape[0]
+#     ny = phi.shape[1]
+#     nz = z.shape[-1]
+    
+#     pos.x1 = np.ndarray.flatten(np.ones((nx,ny,nz))*r*np.cos(phi)) #x in Cartesian (real-space) 
+#     pos.x2 = np.ndarray.flatten(np.ones((nx,ny,nz))*r*np.sin(phi)) #y in Cartesian (real-space) 
+#     pos.x3 = np.ndarray.flatten(z)                                 #z in Cartesian (real-space) 
+
+#     b = vmec.service.magneticField(str(vmec_url), pos)
+
+#     ## Reshape to 3d array
+#     Bx = np.ndarray.reshape(np.asarray(b.field.x1),(nx,ny,nz))
+#     By = np.ndarray.reshape(np.asarray(b.field.x2),(nx,ny,nz))
+#     Bz = np.ndarray.reshape(np.asarray(b.field.x3), (nx,ny,nz))
+
+#     return Bx, By, Bz
+
+    
 ### return a VMEC flux surface as a RZline object
-def get_VMEC_surfaces(phi=[0],s=0.75,w7x_run='w7x_ref_1',npoints=100):
+def get_VMEC_surfaces(phi=[0],s=0.75,w7x_run='w7x_ref_2',npoints=100):
     from osa import Client
     client =  Client("http://esb.ipp-hgw.mpg.de:8280/services/vmec_v5?wsdl")
     points = client.service.getFluxSurfaces(str(w7x_run), phi, s, npoints)
@@ -224,7 +273,7 @@ def get_VMEC_surfaces(phi=[0],s=0.75,w7x_run='w7x_ref_1',npoints=100):
     for y in range(len(phi)):
         r, z = points[y].x1, points[y].x3
         line = zb.rzline.line_from_points(r,z)
-        line = line.equallySpaced()
+        # line = line.equallySpaced(n=npoints)
         lines.append(line)
 
     return lines
@@ -240,15 +289,31 @@ def get_W7X_vessel(phi=[0],nz=256):
     mset.references = []
 
     #add references to single components, in this case ports
-    w1 = srv2.types.SurfaceMeshWrap()
-    ref = srv2.types.DataReference()
-    ref.dataId = "371" # component id
-    w1.reference = ref
+    # w1 = srv2.types.SurfaceMeshWrap()
+    # ref = srv2.types.DataReference()
+    # ref.dataId = "13" # component id
+    # w1.reference = ref
     # w2 = srv2.types.SurfaceMeshWrap()
     # ref = srv2.types.DataReference()
-    # ref.dataId = "341" # component id
+    # ref.dataId = "14" # component id
     # w2.reference = ref
-    mset.meshes = [w1]#, w2]
+    # w3 = srv2.types.SurfaceMeshWrap()
+    # ref = srv2.types.DataReference()
+    # ref.dataId = "15" # component id
+    # w3.reference = ref
+    # w4 = srv2.types.SurfaceMeshWrap()
+    # ref = srv2.types.DataReference()
+    # ref.dataId = "16" # component id
+    # w4.reference = ref
+    # w5 = srv2.types.SurfaceMeshWrap()
+    # ref = srv2.types.DataReference()
+    # ref.dataId = "17" # component id
+    # w5.reference = ref
+    w6 = srv2.types.SurfaceMeshWrap()
+    ref = srv2.types.DataReference()
+    ref.dataId = "371" # component id
+    w6.reference = ref
+    mset.meshes = [w6]
     
     lines = []
     for y in range(phi.shape[0]):
@@ -289,12 +354,14 @@ def get_W7X_vessel(phi=[0],nz=256):
     return lines
 
 ## calculate curvature for curvilinear grids
-def calc_curvilinear_curvature(fname, field, grid, maps):
+def calc_curvilinear_curvature(fname, field, grid):
         from scipy.signal import savgol_filter
 
         f = DataFile(str(fname), write=True)
         B = f.read("B")
-
+        R = f.read("R")
+        Z = f.read("Z")
+        phi = f.read("phi")
         dx = grid.metric()["dx"]
         dz = grid.metric()["dz"]
         g_11 = grid.metric()["g_xx"]
@@ -311,28 +378,27 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
         dZdz = np.zeros(B.shape)
         dRdx = np.zeros(B.shape)
         dZdx = np.zeros(B.shape)
-        
         for y in np.arange(0,B.shape[1]):
-            pol,_ = grid.getPoloidalGrid(y)
-            R = pol.R
-            Z = pol.Z
+            # pol,_ = grid.getPoloidalGrid(y)
+            # R = pol.R
+            # Z = pol.Z
             # G = \vec{B}/B, here in cylindrical coordinates
             GR[:,y,:] = field.Bxfunc(R,Z,y)/((B[:,y,:])**2)
             GZ[:,y,:] = field.Bzfunc(R,Z,y)/((B[:,y,:])**2)
             Gphi[:,y,:] = field.Byfunc(R,Z,y)/((B[:,y,:])**2)
-            for x in np.arange(0,B.shape[0]):
-                dRdz[x,y,:] = calc.deriv(R[x,:])/dz[x,y,:]
-                dZdz[x,y,:] = calc.deriv(Z[x,:])/dz[x,y,:]
-            for z in np.arange(0,B.shape[-1]):
-                dRdx[:,y,z] = calc.deriv(R[:,z])/dx[:,y,z]
-                dZdx[:,y,z] = calc.deriv(Z[:,z])/dx[:,y,z]
 
-        R = f.read("R")
-        Z = f.read("Z")
+            for x in np.arange(0,B.shape[0]):
+                dRdz[x,y,:] = calc.deriv(R[x,y,:],periodic=False)/dz[x,y,:]
+                dZdz[x,y,:] = calc.deriv(Z[x,y,:],periodic=False)/dz[x,y,:]
+            for z in np.arange(0,B.shape[-1]):
+                dRdx[:,y,z] = calc.deriv(R[:,y,z])/dx[:,y,z]
+                dZdx[:,y,z] = calc.deriv(Z[:,y,z])/dx[:,y,z]
+
         dy = f.read("dy")
 
         ## calculate Jacobian and contravariant terms in curvilinear coordinates
         J = R * (dZdz * dRdx - dZdx * dRdz )
+
         Gx = (GR*dZdz - GZ*dRdz)*(R/J)
         Gz = (GZ*dRdx - GR*dZdx)*(R/J)
         
@@ -348,8 +414,8 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
         dG_xdy = np.zeros(B.shape)
         for y in np.arange(0,B.shape[1]):
             for x in np.arange(0,B.shape[0]):
-                dG_ydz[x,y,:] = calc.deriv(G_y[x,y,:])/dz[x,y,:]
-                dG_xdz[x,y,:] = calc.deriv(G_x[x,y,:])/dz[x,y,:]
+                dG_ydz[x,y,:] = calc.deriv(G_y[x,y,:], periodic=False)/dz[x,y,:]
+                dG_xdz[x,y,:] = calc.deriv(G_x[x,y,:], periodic=False)/dz[x,y,:]
             for z in np.arange(0,B.shape[-1]):
                 dG_ydx[:,y,z] = calc.deriv(G_y[:,y,z])/dx[:,y,z]
                 dG_zdx[:,y,z] = calc.deriv(G_z[:,y,z])/dx[:,y,z]
@@ -360,14 +426,18 @@ def calc_curvilinear_curvature(fname, field, grid, maps):
                 dG_zdy[x,:,z] = calc.deriv(G_z[x,:,z])/dy[x,:,z]
                 dG_xdy[x,:,z] = calc.deriv(G_x[x,:,z])/dy[x,:,z]
 
+        # dG_zdy[:,:,0] = np.mean([dG_zdy[:,:,1],dG_zdy[:,:,-1]])
+        # dG_xdy[:,:,0] = np.mean([dG_xdy[:,:,1],dG_xdy[:,:,-1]])
         bxcvx = (dG_zdy - dG_ydz)/J
         bxcvy = (dG_xdz - dG_zdx)/J
         bxcvz = (dG_ydx - dG_xdy)/J
-        bxcv = g_11*(bxcvx**2) + g_22*(bxcvy**2) + g_33*(bxcvz**2) + 2*(bxcvz*bxcvx*g_13) 
+        bxcv = np.sqrt( g_11*(bxcvx**2) + g_22*(bxcvy**2) + g_33*(bxcvz**2) + 2*(bxcvz*bxcvx*g_13) )
+
         f.write('bxcvx', bxcvx)
         f.write('bxcvy', bxcvy)
         f.write('bxcvz', bxcvz)
-        f.write('J', J)
+        f.write('bxcv', bxcv)
+        # f.write('J', J)
         f.close()
 
 ## smooth the metric tensor components
@@ -457,7 +527,6 @@ def plot_maps(field, grid, maps, yslice=0):
 
     plt.plot(pol.R, pol.Z, 'x')
 
-    import pdb; pdb.set_trace()
     # Get the coordinates which the forward map corresponds to
     R_next, Z_next = pol_next.getCoordinate(maps['forward_xt_prime'][:,yslice,:], maps['forward_zt_prime'][:,yslice,:] )
     

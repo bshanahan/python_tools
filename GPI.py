@@ -208,7 +208,7 @@ def GPI_lpar(x,y,z, configuration=1, limit=5000):
     lengths = np.zeros((nx*nz))
     
     for n in np.arange(0,nx*nz):
-        lengths[n] = 0.5*(res_fwd.connection[n].length + res_bwd.connection[n].length)
+        lengths[n] = res_fwd.connection[n].length + res_bwd.connection[n].length
 
     lengths = np.ndarray.reshape(lengths,(nx,nz))
 

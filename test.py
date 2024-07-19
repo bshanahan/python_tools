@@ -33,3 +33,17 @@ for s in result: #loop over non-empty triangle intersections
     plt.plot(R, z, "-k", lw = .5, zorder=-20)
 
 plt.show()
+
+
+
+
+for y, index in zip(np.linspace(0.01,2*np.pi/5.,16),np.arange(0,16)) :
+    S = field.Sf(RR,y,ZZ)
+    plt.contour(RR, ZZ, S, np.linspace(0.0,0.01,14), colors='black')
+    plt.axis("equal")
+    plt.xlabel('R [m]', fontsize=18)
+    plt.ylabel('R [m]', fontsize=18)
+    plt.tick_params('both', labelsize=14)
+    plt.tight_layout()
+    plt.savefig('Dommaschk_S_'+str(index)+'.png')
+    plt.clf()

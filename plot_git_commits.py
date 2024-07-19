@@ -30,11 +30,12 @@ def plot_git_commits(path='.'):
         total_commits[i] = np.sum(ncommits[:i])
     
     fn = interp1d(range(len(dates)), total_commits, 'cubic', bounds_error=False)
-
+    print(total_commits[-1]/len(dates))
+    print(dates[0])
     fig, ax = plt.subplots(1)
     fig.set_size_inches((8, 4.5))
     x = np.linspace(0, len(dates), 1000)
-    plt.fill_between(x, 0, fn(x), color='royalblue', alpha=0.75)
+    plt.fill_between(x, 0, fn(x), color='teal', alpha=0.75)
     ax.set_xlim(0, len(dates))
     ax.set_ylim(0, max(total_commits) + 0.1 * max(total_commits))
     ax.xaxis.set_ticks(np.linspace(0, len(dates) - 1, 8)[1:-1])

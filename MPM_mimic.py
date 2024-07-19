@@ -5,6 +5,81 @@ from boututils import calculus as calc
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
+def transport(path='.', trange=[100,150], inclination=0, pin_sep=5e-3):
+    n  = collect("Ne", path=path, info=False)
+    Pe = collect("Pe", path=path, info=False)
+    n0 = collect("Nnorm", path=path, info=False)
+    T0 = collect("Tnorm", path=path, info=False)
+    phi = collect("phi",path=path, info=False)*T0
+    phi -= phi[0,0,0,0]
+    t_array = collect("t_array", path=path, info=False)
+    nt = t_array.shape[0]
+    wci = collect("Omega_ci", path=path, info=False)
+    dt = (t_array[1]-t_array[0])/wci 
+    rhos = collect('rho_s0', path=path, info=False)
+    R0 = collect('R0',path=path, info=False)*rhos
+    B0 = collect('Bnorm',path=path, info=False)
+    dx = collect('dx', path=path, info=False)*rhos*rhos/R0
+    dz = collect('dz',path=path, info=False)*R0
+    Lx = ((dx.shape[0]-4)*dx[0,0])
+    Lz = dz * n.shape[-1]
+    nx = dx.shape[0]
+    nz = n.shape[-1]
+    pin_sep_r = pin_sep*np.sin(inclination)
+    pin_sep_z = pin_sep*np.cos(inclination)
+    probe_offset_r = int(round((pin_sep_r/Lx)*nx))
+    probe_offset_z = int(round((pin_sep_z/Lz)*nz))
+    pin_sep_real = np.sqrt((probe_offset_r*Lx/nx)**2 + (probe_offset_z*Lz/nz)**2)
+
+    v,pos_fit,pos,r,z,tcross,xind,zind = calc_com_velocity(path=path,fname=None,tmax=-1, return_indices=True)
+
+    ## For each position, save time trace (also for probe offset)
+
+    vfl = get_vfl(Pe*T0/n, phi)
+
+    Epol_fl = np.zeros((nt))
+    Gamma_probe = np.zeros((nt))
+    Gamma = np.zeros((nt))
+    vr = np.zeros((nt))
+    
+    for t in np.arange(0,nt):
+        Epol_fl[t] = (vfl[t,(xind[t]+probe_offset_r)%(nx-1), 0, (zind[t]+probe_offset_z)%(nz-1)] -  vfl[t,(xind[t]-probe_offset_r)%(nx-1), 0, (zind[t]-probe_offset_z)%(nz-1)])/(2*np.sqrt(pin_sep_z**2 + pin_sep_r**2))
+        vr[t] = Epol_fl[t]/B0
+        Gamma_probe[t] = np.max(n[:,xind[t],0,zind[t]]*n0*vr[t])
+
+
+    ## calculate flux dN/dt/area  --  N = n*volume
+    dn = np.zeros(n.shape)
+    dn_dt = np.zeros(n.shape)
+    N = n*n0*Lz*Lx*105
+    for t in np.arange(1,len(t_array)):
+        dn_dt[t,...] = (N[t,...]-N[t-1,...])/dt
+        
+        Gamma[t] = np.mean(dn_dt[:,xind[t],0,zind[t]]) / (Lz*105)
+    # for i in np.arange(0,pin_sep.shape[0]): 
+    #     Gamma[:,i], Gamma_probe[:,i] = transport(trange=trange,pin_sep=pin_sep[i])
+    #     error_small[i] = 100*np.max((np.max(Gamma[:,i])-np.max(Gamma_probe[:,i]))/np.max(Gamma[:,i]))
+    # plt.rc('font', family='Serif') 
+    # plt.figure(figsize=(8,4.5)) 
+    # plt.plot(2e3*pin_sep, error_small[:], 'o', color='C0', label = r'$\delta \approx 1.5$cm') 
+    # plt.plot(2e3*pin_sep[:], error[:], 'o', color='C1', label=r'$\delta \approx 2$cm') 
+    # plt.plot(2e3*pin_sep[:], error_big[:], 'o', color='C2', label=r'$\delta \approx 2.5$cm') 
+    
+    # plt.grid(alpha=0.5) 
+    # plt.xlabel(r'Pin separation [mm]', fontsize=18) 
+    # plt.ylabel(r'$\Gamma_r$ error [%]', fontsize=18) 
+    # plt.legend(fancybox=True, loc='best', framealpha=0, fontsize=13) 
+    
+    # plt.ylim(-100,100) 
+    # plt.tick_params('both', labelsize=14) 
+    # plt.tight_layout() 
+    # if save_plot: 
+    #     plt.savefig(str(fname), dpi=300) 
+    #     plt.show() 
+    # else: 
+    #     plt.show() 
+    return Gamma, Gamma_probe
+
 def vary_inclination(path='.', t_range=[100,150], thetas=np.linspace(-0.5,0.5,20), show_plot=True, save_plot=False, fname='inclination.png', tcutoff=1e-5):
     sigma_d = np.zeros(thetas.shape)
     sigma_v = np.zeros(thetas.shape)
@@ -36,14 +111,14 @@ def vary_inclination(path='.', t_range=[100,150], thetas=np.linspace(-0.5,0.5,20
     else:
         return thetas, sigma_v, error_fit
     
-def pin_separation(path='.', t_range=[100,150], pin_sep=np.linspace(1e-3,1e-2,20), show_plot=True, save_plot=False, fname='pin_sep.png', tcutoff=1e-5):
+def pin_separation(path='.', t_range=[100,150], pin_sep=np.linspace(1e-3,1.5e-2,30), show_plot=True, save_plot=False, fname='pin_sep.png', tcutoff=1e-5):
     sigma_v = np.zeros(pin_sep.shape)
     pin_sep_sim = np.zeros(pin_sep.shape)
     Gamma_r = np.zeros(pin_sep.shape)
     Gamma_r_real = np.zeros(pin_sep.shape)
     vr_array = np.zeros((150,pin_sep.shape[0]))
-    wci = collect('Omega_ci', info=False)
-    t_array = collect('t_array', info=False)/wci
+    wci = collect('Omega_ci', path=path, info=False)
+    t_array = collect('t_array', path=path, info=False)/wci
     dt = t_array[1]-t_array[0]
     for i,sep in zip(np.arange(0,pin_sep.shape[0]),pin_sep):
         d_m, d_s, vr_array[:,i], vr_fl, v, I, sigma_d, sigma_v_fl, sigma_v[i], nevents, t_e, twindow, vr, pin_sep_sim[i], Gamma_r[i], Gamma_r_real[i] = synthetic_probe(path=path, pin_sep=sep, t_range=t_range, return_error = True, detailed_return=True, tcutoff=tcutoff)
@@ -89,11 +164,12 @@ def pin_separation(path='.', t_range=[100,150], pin_sep=np.linspace(1e-3,1e-2,20
         #gamma_r plot
         plt.rc('font', family='Serif')
         plt.figure(figsize=(8,4.5))
-        plt.plot(2e3*pin_sep, 100*(Gamma_r-Gamma_r_real)/Gamma_r_real, 'o', color='C0')
+        plt.plot(2e3*pin_sep, sigma_v, 'o', color='C0')
+        plt.plot(2e3*pin_sep, 100*(Gamma_r_real-Gamma_r)/Gamma_r_real, 'o', color='C1')
         # plt.plot(2e3*pin_sep, error_fit, color='C0', label=r'fit: %.2f$\theta^2$ - %.2f$\theta$ + %.2f' %(float(z1[0]),float(np.abs(z1[1])) ,float(z1[2])))
         plt.grid(alpha=0.5)
         plt.xlabel(r'Pin separation [mm]', fontsize=18)
-        plt.ylabel(r'$\Gamma_r [m^{-2}s^{-1}$', fontsize=18)
+        plt.ylabel(r'Error [%]', fontsize=18)
         # plt.legend(fancybox=True, loc='best', framealpha=0, fontsize=13)
                 
         plt.tick_params('both', labelsize=14)
@@ -104,7 +180,7 @@ def pin_separation(path='.', t_range=[100,150], pin_sep=np.linspace(1e-3,1e-2,20
         else:
             plt.show()
         
-        return pin_sep_sim, sigma_v, error_fit
+        return pin_sep_sim, sigma_v, error_fit, Gamma_r, Gamma_r_real
 
     else:
         return pin_sep_sim, sigma_v, error_fit
@@ -145,12 +221,12 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
     wci = collect("Omega_ci", path=path, info=False)
     dt = (t_array[1]-t_array[0])/wci 
     rhos = collect('rho_s0', path=path, info=False)
-    R0 = collect('R0',path=path, info=False)*rhos
+    R0 = 6.1#collect('R0',path=path, info=False)
     B0 = collect('Bnorm',path=path, info=False)
     dx = collect('dx', path=path, info=False)*rhos*rhos/R0
     dz = collect('dz',path=path, info=False)*R0
     Lx = ((dx.shape[0]-4)*dx[0,0])
-    Lz = dz * n.shape[-1]
+    Lz = dz[0,0] * n.shape[-1]
 
     # print ("Synthetic Measurement Frequency: {} MHz".format(np.around(1e-6/dt,decimals=3)))
 
@@ -212,6 +288,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
                 trise[i,k] = int(np.argmax(Isat[t_min:,i,k] > maxIdiff)+t_min)
                 # import pdb; pdb.set_trace()
                 tfall[i,k] = np.max(np.where(Isat[t_min:,i,k] > maxIdiff))+t_min
+                print(trise[i,k],tfall[i,k])
                 if ( dt*(tfall[i,k]-trise[i,k]) >= tcutoff) :
                     events[i,k] = 1
                     Epol[:,i,k] = (phi[:,(i+probe_offset_r)%(nx-1), (k+probe_offset_z)%(nz-1)] -  phi[:,(i+probe_offset_r)%(nx-1), (k-probe_offset_z)%(nz-1)])/(2*np.sqrt(pin_sep_z**2 + pin_sep_r**2))
@@ -269,6 +346,8 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
 
         ## The next 2 lines calculate the measured size, and could be more elegant...
         v_pol =(np.amax(z)-z[0])/(dt*np.where(z == np.max(z))[0])[0]
+
+        print(v_pol)
         
         delta_measured = t_e*v_pol
 
@@ -305,12 +384,13 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
 
         delta_real_mean = np.mean(delta_real)
         size_error = np.around(100*np.abs(delta_measured-delta_real_mean)/delta_real_mean,decimals=2)
-        Gamma_r = np.max(n_CA) * np.max(vr_fl_CA)
-        Gamma_r_real = np.max(n_CA) * v_max
+        Gamma_r = np.max(n_CA * vr_fl_CA)
+        Gamma_r_real = np.max(n0*n[t_range[0]:t_range[-1],...]) * v_max
     else:
         delta_measured =0
         delta_real_mean =0
         vr_CA = 0
+        vr_fl_CA = 0
         v = 0 
         I_CA = 0
         size_error= 0
@@ -322,7 +402,7 @@ def synthetic_probe(path='.',t_range=[100,150], detailed_return=False, return_er
         trise = 0
         vr = 0
         Gamma_r = 0
-        Gamma_r_real = np.max(n_CA) * v_max
+        Gamma_r_real = 0
 
     if not quiet:
         print ("Number of events: {} ".format(np.around(len(event_indices),decimals=2)))
@@ -362,7 +442,7 @@ def get_vfl(Te,phi):
 
     return v_fl
 
-def calc_com_velocity(path=".", fname="None", tmax=-1, track_peak=False):
+def calc_com_velocity(path=".", fname="None", tmax=-1, track_peak=False, return_indices=False):
     
     """
    
@@ -393,9 +473,9 @@ def calc_com_velocity(path=".", fname="None", tmax=-1, track_peak=False):
         R = np.zeros((nx, ny, nz))
         Z = np.zeros((nx, ny, nz))
         rhos = collect('rho_s0', path=path, tind=[0, tmax])
-        Rxy = collect("R0", path=path, info=False) * rhos
+        Rxy = 6.1#collect("R0", path=path, info=False)
         dx = (collect('dx', path=path, tind=[0, tmax], info=False) * rhos * rhos / (Rxy))[0, 0]
-        dz = (collect('dz', path=path, tind=[0, tmax], info=False) * Rxy)
+        dz = (collect('dz', path=path, tind=[0, tmax], info=False) * Rxy)[0, 0]
         for i in np.arange(0, nx):
             for j in np.arange(0, ny):
                 R[i, j, :] = dx * i
@@ -473,5 +553,7 @@ def calc_com_velocity(path=".", fname="None", tmax=-1, track_peak=False):
         v_fit[:, y] = calc.deriv(pos_fit[:, y]) / dt
 
 
-
-    return v_fit[:, 0], pos_fit[:, 0], pos[:, 0], Rpos[:, 0], Zpos[:, 0], t_cross
+    if return_indices:
+        return v_fit[:, 0], pos_fit[:, 0], pos[:, 0], Rpos[:, 0], Zpos[:, 0], t_cross, xval,zval
+    else:
+        return v_fit[:, 0], pos_fit[:, 0], pos[:, 0], Rpos[:, 0], Zpos[:, 0], t_cross
